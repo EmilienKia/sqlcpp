@@ -21,18 +21,26 @@
 #include <limits>
 
 /*
+ * Refs:
+ * - https://sqlite.org/cintro.html
+ * - https://sqlite.org/c3ref/intro.html
+ * - https://sqlite.org/datatype3.html
+ * - https://sqlite.org/c3ref/bind_blob.html
+ * - https://sqlite.org/c3ref/bind_parameter_name.html
+ * - https://sqlite.org/lang_expr.html#varparam
+ *
  * Implementation notes:
  * SQLite is typeless, so we have to do our best to map types.
  * STRICT tables help a bit, but not always.
  *
- * There are no 32 bit Integer type, only INT64 named INTEGER (INT).
+ * There are no 32-bit Integer type, only INT64 named INTEGER (INT).
  * Integers are always retrieved as int64.
- * When binded, values are casted to int64
- * When requested explicitly, int are requested as int64 then casted to int32.
+ * When bound, values are cast to int64
+ * When requested explicitly, int are requested as int64 then cast to int32.
  *
  * There is no BOOL field type, a field cannot be bool.
- * When binded, values are bind to int (0 or 1)
- * When requested explicitly, values are casted to bool as:
+ * When bound, values are bind to int (0 or 1)
+ * When requested explicitly, values are cast to bool as:
  * - NULL is false
  * - INTEGER or REAL is false if 0, true otherwise
  * - TEXT is false if "false", true otherwise
@@ -363,7 +371,7 @@ statement& statement::bind(const std::string& name, std::nullptr_t)
 {
     int idx = parameter_index(name);
     if(idx >= 0) {
-        sqlite3_bind_null(_stmt.get(), idx);
+        sqlite3_bind_null(_stmt.get(), idx+1);
         // TODO process error, throw exception
     } else {
         // TODO process error, throw exception
@@ -375,7 +383,7 @@ statement& statement::bind(const std::string& name, const std::string& value)
 {
     int idx = parameter_index(name);
     if(idx >= 0) {
-        sqlite3_bind_text(_stmt.get(), idx, value.c_str(), value.size(), SQLITE_TRANSIENT);
+        sqlite3_bind_text(_stmt.get(), idx+1, value.c_str(), value.size(), SQLITE_TRANSIENT);
         // TODO process error, throw exception
     } else {
         // TODO process error, throw exception
@@ -387,7 +395,7 @@ statement& statement::bind(const std::string& name, const std::string_view& valu
 {
     int idx = parameter_index(name);
     if(idx >= 0) {
-        sqlite3_bind_text(_stmt.get(), idx, value.data(), value.size(), SQLITE_TRANSIENT);
+        sqlite3_bind_text(_stmt.get(), idx+1, value.data(), value.size(), SQLITE_TRANSIENT);
         // TODO process error, throw exception
     } else {
         // TODO process error, throw exception
@@ -399,7 +407,7 @@ statement& statement::bind(const std::string& name, const blob& value)
 {
     int idx = parameter_index(name);
     if(idx >= 0) {
-        sqlite3_bind_blob(_stmt.get(), idx, value.data(), value.size(), SQLITE_TRANSIENT);
+        sqlite3_bind_blob(_stmt.get(), idx+1, value.data(), value.size(), SQLITE_TRANSIENT);
         // TODO process error, throw exception
     } else {
         // TODO process error, throw exception
@@ -411,7 +419,7 @@ statement& statement::bind(const std::string& name, bool value)
 {
     int idx = parameter_index(name);
     if(idx >= 0) {
-        sqlite3_bind_int(_stmt.get(), idx, value ? 1 : 0);
+        sqlite3_bind_int(_stmt.get(), idx+1, value ? 1 : 0);
         // TODO process error, throw exception
     } else {
         // TODO process error, throw exception
@@ -423,7 +431,7 @@ statement& statement::bind(const std::string& name, int value)
 {
     int idx = parameter_index(name);
     if(idx >= 0) {
-        sqlite3_bind_int(_stmt.get(), idx, value);
+        sqlite3_bind_int(_stmt.get(), idx+1, value);
         // TODO process error, throw exception
     } else {
         // TODO process error, throw exception
@@ -435,7 +443,7 @@ statement& statement::bind(const std::string& name, int64_t value)
 {
     int idx = parameter_index(name);
     if(idx >= 0) {
-        sqlite3_bind_int64(_stmt.get(), idx, value);
+        sqlite3_bind_int64(_stmt.get(), idx+1, value);
         // TODO process error, throw exception
     } else {
         // TODO process error, throw exception
@@ -447,7 +455,7 @@ statement& statement::bind(const std::string& name, double value)
 {
     int idx = parameter_index(name);
     if(idx >= 0) {
-        sqlite3_bind_double(_stmt.get(), idx, value);
+        sqlite3_bind_double(_stmt.get(), idx+1, value);
         // TODO process error, throw exception
     } else {
         // TODO process error, throw exception

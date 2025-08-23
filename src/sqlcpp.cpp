@@ -32,6 +32,17 @@ std::unique_ptr<connection> connection::create(const std::string& connection_str
     return {};
 }
 
+//
+// SQLCPP statement
+//
+
+statement& statement::bind_null(const std::string& name) {
+    return bind(name, nullptr);
+}
+
+statement& statement::bind_null(unsigned int index) {
+    return bind(index, nullptr);
+}
 
 //
 // SQLCPP resultset row iterator

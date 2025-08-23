@@ -21,9 +21,11 @@
 
 #include <iostream>
 
+static std::string connection_string = "postgresql://postgres:tartopom@localhost/testdb";
+
 TEST_CASE("Simple PostgreSQL", "[postgresql]")
 {
-    auto db = sqlcpp::postgresql::connection::create("postgresql://postgres:tartopom@localhost/testdb");
+    auto db = sqlcpp::postgresql::connection::create(connection_string);
     REQUIRE( !!db );
 
     db->execute(
@@ -118,4 +120,182 @@ TEST_CASE("Simple PostgreSQL", "[postgresql]")
         REQUIRE( std::holds_alternative<std::nullptr_t >(raw.get_value(5)) );
     }
 
+    // Cleanup
+    db->execute("DROP TABLE test;");
+}
+
+TEST_CASE("PostgreSQL Variable Binding", "[postgresql][binding]")
+{
+    // Note: Connection string should be adapted to your PostgreSQL setup
+    auto db = sqlcpp::postgresql::connection::create(connection_string);
+    REQUIRE( !!db );
+
+    // Create test table for binding tests
+    db->execute(
+        "DROP TABLE IF EXISTS binding_test;"
+        "CREATE TABLE binding_test ("
+        "id SERIAL PRIMARY KEY, "
+        "int_val BIGINT, "
+        "real_val DOUBLE PRECISION, "
+        "text_val TEXT, "
+        "blob_val BYTEA, "
+        "bool_val BOOLEAN"
+        ");"
+    );
+
+    SECTION("Bind by index")
+    {
+        auto stmt = db->prepare("INSERT INTO binding_test(int_val, real_val, text_val, blob_val, bool_val) VALUES($1, $2, $3, $4, $5)");
+        REQUIRE( !!stmt );
+
+        stmt->bind(1, static_cast<int64_t>(42));
+        stmt->bind(2, 3.14);
+        stmt->bind(3, std::string("test"));
+        stmt->bind(4, sqlcpp::blob{0x01, 0x02, 0x03});
+        stmt->bind(5, true);
+
+        auto result = stmt->execute();
+        REQUIRE( !!result );
+
+        // Verify inserted data
+        auto select_stmt = db->prepare("SELECT int_val, real_val, text_val, blob_val, bool_val FROM binding_test WHERE id = $1");
+        select_stmt->bind(1, static_cast<int64_t>(1));
+        auto rset = select_stmt->execute();
+        REQUIRE( !!rset );
+
+        auto it = rset->begin();
+        auto& row = *it;
+
+        REQUIRE( row.get_value_int64(0) == 42 );
+        REQUIRE( row.get_value_double(1) == 3.14 );
+        REQUIRE( row.get_value_string(2) == "test" );
+        REQUIRE( row.get_value_blob(3) == sqlcpp::blob{0x01, 0x02, 0x03} );
+        REQUIRE( row.get_value_bool(4) == true );
+    }
+
+    SECTION("Bind by name")
+    {
+        // Note: Not implemented yet for PostgreSQL - using positional parameters
+        auto stmt = db->prepare("INSERT INTO binding_test(int_val, real_val, text_val, blob_val, bool_val) VALUES($1, $2, $3, $4, $5)");
+        REQUIRE( !!stmt );
+
+        // Note: Named binding not implemented yet for PostgreSQL
+        // stmt->bind("int_val", static_cast<int64_t>(100));
+        // stmt->bind("real_val", 2.71);
+        // stmt->bind("text_val", std::string("named"));
+        // stmt->bind("blob_val", sqlcpp::blob{0xAA, 0xBB});
+        // stmt->bind("bool_val", false);
+
+        // Using positional binding instead
+        stmt->bind(1, static_cast<int64_t>(100));
+        stmt->bind(2, 2.71);
+        stmt->bind(3, std::string("named"));
+        stmt->bind(4, sqlcpp::blob{0xAA, 0xBB});
+        stmt->bind(5, false);
+
+        auto result = stmt->execute();
+        REQUIRE( !!result );
+
+        // Verify inserted data
+        auto select_stmt = db->prepare("SELECT int_val, real_val, text_val, blob_val, bool_val FROM binding_test WHERE int_val = $1");
+        select_stmt->bind(1, static_cast<int64_t>(100));
+        auto rset = select_stmt->execute();
+        REQUIRE( !!rset );
+
+        auto it = rset->begin();
+        auto& row = *it;
+
+        REQUIRE( row.get_value_int64(0) == 100 );
+        REQUIRE( row.get_value_double(1) == 2.71 );
+        REQUIRE( row.get_value_string(2) == "named" );
+        REQUIRE( row.get_value_blob(3) == sqlcpp::blob{0xAA, 0xBB} );
+        REQUIRE( row.get_value_bool(4) == false );
+    }
+
+    SECTION("Bind NULL values")
+    {
+        auto stmt = db->prepare("INSERT INTO binding_test(int_val, real_val, text_val, blob_val) VALUES($1, $2, $3, $4)");
+        REQUIRE( !!stmt );
+
+        stmt->bind_null(1);
+        stmt->bind_null(2);
+        stmt->bind_null(3);
+        stmt->bind_null(4);
+
+        auto result = stmt->execute();
+        REQUIRE( !!result );
+
+        // Verify NULL values
+        auto select_stmt = db->prepare("SELECT int_val, real_val, text_val, blob_val FROM binding_test WHERE int_val IS NULL");
+        auto rset = select_stmt->execute();
+        REQUIRE( !!rset );
+
+        auto it = rset->begin();
+        auto& row = *it;
+
+        REQUIRE( std::holds_alternative<std::nullptr_t>(row.get_value(0)) );
+        REQUIRE( std::holds_alternative<std::nullptr_t>(row.get_value(1)) );
+        REQUIRE( std::holds_alternative<std::nullptr_t>(row.get_value(2)) );
+        REQUIRE( std::holds_alternative<std::nullptr_t>(row.get_value(3)) );
+    }
+
+    SECTION("Multiple executions with different bindings")
+    {
+        auto stmt = db->prepare("INSERT INTO binding_test(int_val, text_val) VALUES($1, $2)");
+        REQUIRE( !!stmt );
+
+        // First execution
+        stmt->bind(1, static_cast<int64_t>(1));
+        stmt->bind(2, std::string("first"));
+        stmt->execute();
+
+        // Second execution with different values
+        stmt->bind(1, static_cast<int64_t>(2));
+        stmt->bind(2, std::string("second"));
+        stmt->execute();
+
+        // Verify both rows
+        auto select_stmt = db->prepare("SELECT COUNT(*) FROM binding_test WHERE int_val IN ($1, $2)");
+        select_stmt->bind(1, static_cast<int64_t>(1));
+        select_stmt->bind(2, static_cast<int64_t>(2));
+        auto rset = select_stmt->execute();
+        REQUIRE( !!rset );
+
+        auto it = rset->begin();
+        auto& row = *it;
+        REQUIRE( row.get_value_int64(0) == 2 );
+    }
+
+    SECTION("Bind different integer types")
+    {
+        auto stmt = db->prepare("INSERT INTO binding_test(int_val) VALUES($1)");
+        REQUIRE( !!stmt );
+
+        // Test int
+        stmt->bind(1, 123);
+        stmt->execute();
+
+        // Test int64_t
+        stmt->bind(1, static_cast<int64_t>(456));
+        stmt->execute();
+
+        // Test int32_t
+        stmt->bind(1, static_cast<int32_t>(789));
+        stmt->execute();
+
+        // Verify all values
+        auto select_stmt = db->prepare("SELECT COUNT(*) FROM binding_test WHERE int_val IN ($1, $2, $3)");
+        select_stmt->bind(1, 123);
+        select_stmt->bind(2, static_cast<int64_t>(456));
+        select_stmt->bind(3, static_cast<int32_t>(789));
+        auto rset = select_stmt->execute();
+        REQUIRE( !!rset );
+
+        auto it = rset->begin();
+        auto& row = *it;
+        REQUIRE( row.get_value_int64(0) == 3 );
+    }
+
+    // Cleanup
+    db->execute("DROP TABLE binding_test;");
 }

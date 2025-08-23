@@ -81,6 +81,7 @@ public:
     virtual int parameter_index(const std::string& name) const = 0;
     virtual std::string parameter_name(unsigned int index) const = 0;
 
+    virtual statement& bind_null(const std::string& name);
     virtual statement& bind(const std::string& name, std::nullptr_t) = 0;
     virtual statement& bind(const std::string& name, const std::string& value) = 0;
     virtual statement& bind(const std::string& name, const std::string_view& value) = 0;
@@ -91,6 +92,7 @@ public:
     virtual statement& bind(const std::string& name, double value) = 0;
     virtual statement& bind(const std::string& name, const value& value) = 0;
 
+    virtual statement& bind_null(unsigned int index);
     virtual statement& bind(unsigned int index, std::nullptr_t) = 0;
     virtual statement& bind(unsigned int index, const std::string& value) = 0;
     virtual statement& bind(unsigned int index, const std::string_view& value) = 0;

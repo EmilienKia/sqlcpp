@@ -117,5 +117,160 @@ TEST_CASE("Simple SQLite", "[sqlite]")
     }
 
 // TODO test boolean type
-
 }
+
+TEST_CASE("SQLite Variable Binding", "[sqlite][binding]")
+{
+    auto db = sqlcpp::sqlite::connection::create(":memory:");
+    REQUIRE( !!db );
+
+    // Create test table for binding tests
+    db->execute(
+        "CREATE TABLE binding_test ("
+        "id INTEGER PRIMARY KEY AUTOINCREMENT, "
+        "int_val INTEGER, "
+        "real_val REAL, "
+        "text_val TEXT, "
+        "blob_val BLOB, "
+        "bool_val INTEGER"
+        ");"
+    );
+
+    SECTION("Bind by index")
+    {
+        auto stmt = db->prepare("INSERT INTO binding_test(int_val, real_val, text_val, blob_val, bool_val) VALUES(?, ?, ?, ?, ?)");
+        REQUIRE( !!stmt );
+
+        stmt->bind(0, static_cast<int64_t>(42));
+        stmt->bind(1, 3.14);
+        stmt->bind(2, std::string("test"));
+        stmt->bind(3, sqlcpp::blob{0x01, 0x02, 0x03});
+        stmt->bind(4, true);
+
+        auto result = stmt->execute();
+        REQUIRE( !!result );
+
+        // Verify inserted data
+        auto select_stmt = db->prepare("SELECT int_val, real_val, text_val, blob_val, bool_val FROM binding_test WHERE id = 1");
+        auto rset = select_stmt->execute();
+        REQUIRE( !!rset );
+
+        auto it = rset->begin();
+        auto& row = *it;
+
+        REQUIRE( row.get_value_int64(0) == 42 );
+        REQUIRE( row.get_value_double(1) == 3.14 );
+        REQUIRE( row.get_value_string(2) == "test" );
+        REQUIRE( row.get_value_blob(3) == sqlcpp::blob{0x01, 0x02, 0x03} );
+        REQUIRE( row.get_value_int(4) == 1 );
+    }
+
+    SECTION("Bind by name")
+    {
+        auto stmt = db->prepare("INSERT INTO binding_test(int_val, real_val, text_val, blob_val, bool_val) VALUES(:int_val, :real_val, :text_val, :blob_val, :bool_val)");
+        REQUIRE( !!stmt );
+
+        stmt->bind(":int_val", static_cast<int64_t>(100));
+        stmt->bind(":real_val", 2.71);
+        stmt->bind(":text_val", std::string("named"));
+        stmt->bind(":blob_val", sqlcpp::blob{0xAA, 0xBB});
+        stmt->bind(":bool_val", false);
+
+        auto result = stmt->execute();
+        REQUIRE( !!result );
+
+        // Verify inserted data
+        auto select_stmt = db->prepare("SELECT int_val, real_val, text_val, blob_val, bool_val FROM binding_test WHERE int_val = 100");
+        auto rset = select_stmt->execute();
+        REQUIRE( !!rset );
+
+        auto it = rset->begin();
+        auto& row = *it;
+
+        REQUIRE( row.get_value_int64(0) == 100 );
+        REQUIRE( row.get_value_double(1) == 2.71 );
+        REQUIRE( row.get_value_string(2) == "named" );
+        REQUIRE( row.get_value_blob(3) == sqlcpp::blob{0xAA, 0xBB} );
+        REQUIRE( row.get_value_int(4) == 0 );
+    }
+
+    SECTION("Bind NULL values")
+    {
+        auto stmt = db->prepare("INSERT INTO binding_test(int_val, real_val, text_val, blob_val) VALUES(?, ?, ?, ?)");
+        REQUIRE( !!stmt );
+
+        stmt->bind_null(0);
+        stmt->bind_null(1);
+        stmt->bind_null(2);
+        stmt->bind_null(3);
+
+        auto result = stmt->execute();
+        REQUIRE( !!result );
+
+        // Verify NULL values
+        auto select_stmt = db->prepare("SELECT int_val, real_val, text_val, blob_val FROM binding_test WHERE int_val IS NULL");
+        auto rset = select_stmt->execute();
+        REQUIRE( !!rset );
+
+        auto it = rset->begin();
+        auto& row = *it;
+
+        REQUIRE( std::holds_alternative<std::nullptr_t>(row.get_value(0)) );
+        REQUIRE( std::holds_alternative<std::nullptr_t>(row.get_value(1)) );
+        REQUIRE( std::holds_alternative<std::nullptr_t>(row.get_value(2)) );
+        REQUIRE( std::holds_alternative<std::nullptr_t>(row.get_value(3)) );
+    }
+
+    SECTION("Multiple executions with different bindings")
+    {
+        auto stmt = db->prepare("INSERT INTO binding_test(int_val, text_val) VALUES(?, ?)");
+        REQUIRE( !!stmt );
+
+        // First execution
+        stmt->bind(0, static_cast<int64_t>(1));
+        stmt->bind(1, std::string("first"));
+        stmt->execute();
+
+        // Second execution with different values
+        stmt->bind(0, static_cast<int64_t>(2));
+        stmt->bind(1, std::string("second"));
+        stmt->execute();
+
+        // Verify both rows
+        auto select_stmt = db->prepare("SELECT COUNT(*) FROM binding_test WHERE int_val IN (1, 2)");
+        auto rset = select_stmt->execute();
+        REQUIRE( !!rset );
+
+        auto it = rset->begin();
+        auto& row = *it;
+        REQUIRE( row.get_value_int64(0) == 2 );
+    }
+
+    SECTION("Bind different integer types")
+    {
+        auto stmt = db->prepare("INSERT INTO binding_test(int_val) VALUES(?)");
+        REQUIRE( !!stmt );
+
+        // Test int
+        stmt->bind(0, 123);
+        stmt->execute();
+
+        // Test int64_t
+        stmt->bind(0, static_cast<int64_t>(456));
+        stmt->execute();
+
+        // Test int32_t
+        stmt->bind(0, static_cast<int32_t>(789));
+        stmt->execute();
+
+        // Verify all values
+        auto select_stmt = db->prepare("SELECT COUNT(*) FROM binding_test WHERE int_val IN (123, 456, 789)");
+        auto rset = select_stmt->execute();
+        REQUIRE( !!rset );
+
+        auto it = rset->begin();
+        auto& row = *it;
+        REQUIRE( row.get_value_int64(0) == 3 );
+    }
+}
+

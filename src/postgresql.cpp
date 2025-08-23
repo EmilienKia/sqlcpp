@@ -22,15 +22,21 @@
 #include <string>
 #include <iostream>
 #include <limits>
+#include <sstream>
 
 /*
- * Implementation notes:
+ * Refs:
+ * - https://www.postgresql.org/docs/current/libpq.html
+ * - https://www.postgresql.org/docs/current/libpq-connect.html
+ * - https://www.postgresql.org/docs/current/libpq-status.html
+ * - https://www.postgresql.org/docs/current/libpq-exec.html
+ * - https://www.postgresql.org/docs/current/sql-prepare.html
  *
+ * Implementation notes:
  *
  * TODO:
  * - Implement generic bind by name
  * - Implement binary format
- * - set tatement names to allow multiple statements at a time
  */
 
 
@@ -571,31 +577,37 @@ static inline std::string to_hex_string(const blob& data) {
 
 std::unique_ptr<sqlcpp::resultset> statement::execute()
 {
+    size_t sz = _params.size();
+
     std::vector<std::string> values;
-    for(auto& v : _params) {
-        values.push_back(
-            std::visit([&](auto&& arg) -> std::string {
-                using T = std::decay_t<decltype(arg)>;
-                if constexpr(std::is_same_v<T, std::monostate>) {
-                    return "NULL";
-                } else if constexpr(std::is_same_v<T, std::nullptr_t>) {
-                    return "NULL";
-                } else if constexpr(std::is_same_v<T, std::string>) {
-                    return arg;
-                } else if constexpr(std::is_same_v<T, blob>) {
-                    return to_hex_string(arg);
-                } else if constexpr(std::is_same_v<T, bool>) {
-                    return arg ? "TRUE" : "FALSE";
-                } else {
-                    return std::to_string(arg);
-                }
-            }, v)
-        );
-    }
+    values.reserve(sz);
     std::vector<const char*> rc;
-    rc.reserve(values.size());
-    for(auto& v : values) {
-        rc.push_back(v.c_str());
+    rc.reserve(sz);
+
+    for(int i=1; i<sz; i++) {
+        const auto& v = _params[i];
+        std::visit([&](auto&& arg) {
+            using T = std::decay_t<decltype(arg)>;
+            if constexpr(std::is_same_v<T, std::monostate>) {
+                values.emplace_back("");
+                rc.push_back(nullptr);
+            } else if constexpr(std::is_same_v<T, std::nullptr_t>) {
+                values.emplace_back("");
+                rc.push_back(nullptr);
+            } else if constexpr(std::is_same_v<T, std::string>) {
+                values.push_back(arg);
+                rc.push_back(values.back().c_str());
+            } else if constexpr(std::is_same_v<T, blob>) {
+                values.push_back("\\x" + to_hex_string(arg));
+                rc.push_back(values.back().c_str());
+            } else if constexpr(std::is_same_v<T, bool>) {
+                values.push_back(arg ? "TRUE" : "FALSE");
+                rc.push_back(values.back().c_str());
+            } else {
+                values.push_back(std::to_string(arg));
+                rc.push_back(values.back().c_str());
+            }
+        }, v);
     }
 
     PGresult *res = PQexecPrepared(_db.lock().get(), _stmt_name.c_str(), rc.size(), rc.data(), nullptr, nullptr, 0);
@@ -603,7 +615,6 @@ std::unique_ptr<sqlcpp::resultset> statement::execute()
     switch(PQresultStatus(res)) {
         case PGRES_COMMAND_OK:
         case PGRES_TUPLES_OK:
-//            PQclear(res);
             return std::unique_ptr<sqlcpp::resultset>{new resultset(res)};
         default:
             std::cerr << "Failed to execute statement: " << PQerrorMessage(_db.lock().get()) << std::endl;
@@ -823,7 +834,10 @@ void connection::execute(const std::string& query)
 
 std::unique_ptr<sqlcpp::statement> connection::prepare(const std::string& query)
 {
-    std::string stmt_name{}; // TODO Generate a unique statement name
+    static unsigned int count = 0;
+    std::ostringstream oss;
+    oss << "prepared-" << count++;
+    std::string stmt_name = oss.str(); // TODO Generate a unique statement name
     PGresult* res = PQprepare(_db.get(), stmt_name.c_str(), query.c_str(), 0, nullptr);
     switch(PQresultStatus(res)) {
         case PGRES_COMMAND_OK:
