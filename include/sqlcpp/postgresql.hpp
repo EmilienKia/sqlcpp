@@ -15,26 +15,27 @@
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.";
  */
 
-#ifndef SQLCPP_SQLITE_HPP
-#define SQLCPP_SQLITE_HPP
+#ifndef SQLCPP_POSTGRESQL_HPP
+#define SQLCPP_POSTGRESQL_HPP
 
 #include "../sqlcpp.hpp"
 
-#include <sqlite3.h>
+#include <postgresql/libpq-fe.h>
 
 #include <string>
+#
 
-namespace sqlcpp::sqlite
+namespace sqlcpp::postgresql
 {
     class connection : public sqlcpp::connection
     {
     protected:
         typedef sqlcpp::connection parent_t;
 
-        sqlite3* _db;
+        std::shared_ptr<PGconn> _db;
 
     public:
-        connection(sqlite3* db);
+        connection(PGconn* db);
         virtual ~connection();
 
         static std::unique_ptr<connection> create(const std::string& connection_string);
@@ -45,5 +46,5 @@ namespace sqlcpp::sqlite
     };
 
 
-} // namespace sqlcpp::sqlite
-#endif // SQLCPP_SQLITE_HPP
+} // namespace sqlcpp::postgresql
+#endif // SQLCPP_POSTGRESQL_HPP

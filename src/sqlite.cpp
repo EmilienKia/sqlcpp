@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2024 Emilien Kia <emilien.kia+dev@gmail.com>
+ * Copyright (C) 2024-2025 Emilien Kia <emilien.kia+dev@gmail.com>
  *
  * sqlcpp is free software: you can redistribute it and/or modify it
  * under the terms of the GNU Lesser General Public License as published
@@ -20,12 +20,30 @@
 #include <iostream>
 #include <limits>
 
+/*
+ * Implementation notes:
+ * SQLite is typeless, so we have to do our best to map types.
+ * STRICT tables help a bit, but not always.
+ *
+ * There are no 32 bit Integer type, only INT64 named INTEGER (INT).
+ * Integers are always retrieved as int64.
+ * When binded, values are casted to int64
+ * When requested explicitly, int are requested as int64 then casted to int32.
+ *
+ * There is no BOOL field type, a field cannot be bool.
+ * When binded, values are bind to int (0 or 1)
+ * When requested explicitly, values are casted to bool as:
+ * - NULL is false
+ * - INTEGER or REAL is false if 0, true otherwise
+ * - TEXT is false if "false", true otherwise
+ * - BLOB is false if empty, true otherwise
+ */
+
 namespace sqlcpp::sqlite
 {
 
 class statement;
 class resultset;
-
 
 
 //
@@ -54,6 +72,7 @@ public:
 
     virtual std::string get_value_string(unsigned int index) const override;
     virtual blob get_value_blob(unsigned int index) const override;
+    virtual bool get_value_bool(unsigned int index) const override;
     virtual int get_value_int(unsigned int index) const override;
     virtual int64_t get_value_int64(unsigned int index) const override;
     virtual double get_value_double(unsigned int index) const override;
@@ -94,7 +113,7 @@ value resultset_row_iterator_impl::get_value(unsigned int index) const
         case SQLITE_NULL:
             return {nullptr};
         case SQLITE_INTEGER:
-            return {get_value_int(index)};
+            return {get_value_int64(index)};
         case SQLITE_FLOAT:
             return {get_value_double(index)};
         case SQLITE_TEXT:
@@ -122,6 +141,23 @@ blob resultset_row_iterator_impl::get_value_blob(unsigned int index) const
     return blob(reinterpret_cast<const unsigned char*>(data), reinterpret_cast<const unsigned char*>(data) + size);
 }
 
+bool resultset_row_iterator_impl::get_value_bool(unsigned int index) const
+{
+    switch(sqlite3_column_type(_stmt.get(), index)) {
+        case SQLITE_NULL:
+            return false;
+        case SQLITE_INTEGER:
+        case SQLITE_FLOAT:
+            return get_value_int64(index) != 0;
+        case SQLITE_TEXT:
+            return get_value_string(index) != "false";
+        case SQLITE_BLOB:
+            return !get_value_blob(index).empty();
+        default:
+            return false;
+    }
+}
+
 int resultset_row_iterator_impl::get_value_int(unsigned int index) const 
 {
     return sqlite3_column_int(_stmt.get(), index);
@@ -136,7 +172,6 @@ double resultset_row_iterator_impl::get_value_double(unsigned int index) const
 {
     return sqlite3_column_double(_stmt.get(), index);
 }
-
 
 
 //
@@ -214,7 +249,7 @@ value_type resultset::column_type(unsigned int index) const
         case SQLITE_NULL:
             return value_type::NULL_VALUE;
         case SQLITE_INTEGER:
-            return value_type::INT;
+            return value_type::INT64;
         case SQLITE_FLOAT:
             return value_type::DOUBLE;
         case SQLITE_TEXT:
@@ -275,6 +310,7 @@ public:
     statement& bind(const std::string& name, const std::string& value) override;
     statement& bind(const std::string& name, const std::string_view& value) override;
     statement& bind(const std::string& name, const blob& value) override;
+    statement& bind(const std::string& name, bool value) override;
     statement& bind(const std::string& name, int value) override;
     statement& bind(const std::string& name, int64_t value) override;
     statement& bind(const std::string& name, double value) override;
@@ -284,6 +320,7 @@ public:
     statement& bind(unsigned int index, const std::string& value) override;
     statement& bind(unsigned int index, const std::string_view& value) override;
     statement& bind(unsigned int index, const blob& value) override;
+    statement& bind(unsigned int index, bool value) override;
     statement& bind(unsigned int index, int value) override;
     statement& bind(unsigned int index, int64_t value) override;
     statement& bind(unsigned int index, double value) override;
@@ -370,7 +407,19 @@ statement& statement::bind(const std::string& name, const blob& value)
     return *this;
 }
 
-statement& statement::bind(const std::string& name, int value)  
+statement& statement::bind(const std::string& name, bool value)
+{
+    int idx = parameter_index(name);
+    if(idx >= 0) {
+        sqlite3_bind_int(_stmt.get(), idx, value ? 1 : 0);
+        // TODO process error, throw exception
+    } else {
+        // TODO process error, throw exception
+    }
+    return *this;
+}
+
+statement& statement::bind(const std::string& name, int value)
 {
     int idx = parameter_index(name);
     if(idx >= 0) {
@@ -442,7 +491,14 @@ statement& statement::bind(unsigned int index, const blob& value)
     return *this;
 }
 
-statement& statement::bind(unsigned int index, int value)  
+statement& statement::bind(unsigned int index, bool value)
+{
+    sqlite3_bind_int(_stmt.get(), index + 1, value ? 1 : 0);
+    // TODO process error, throw exception
+    return *this;
+}
+
+statement& statement::bind(unsigned int index, int value)
 {
     sqlite3_bind_int(_stmt.get(), index + 1, value);
     // TODO process error, throw exception

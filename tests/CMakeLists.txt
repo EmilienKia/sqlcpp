@@ -4,9 +4,10 @@ add_executable(utest
         catch.hpp
         runner.cpp
         tests-sqlite.cpp
+        tests-postgresql.cpp
 )
 
-target_link_libraries(utest sqlcpp sqlcpp-sqlite)
+target_link_libraries(utest sqlcpp sqlcpp-sqlite sqlcpp-postgresql)
 
 add_test(NAME utest COMMAND utest)
 

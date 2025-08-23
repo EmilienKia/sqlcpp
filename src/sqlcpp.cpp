@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2024 Emilien Kia <emilien.kia+dev@gmail.com>
+ * Copyright (C) 2024-2025 Emilien Kia <emilien.kia+dev@gmail.com>
  *
  * sqlcpp is free software: you can redistribute it and/or modify it
  * under the terms of the GNU Lesser General Public License as published
@@ -43,6 +43,13 @@ resultset_row_iterator& resultset_row_iterator::operator++()
         _impl->next();
     }
     return *this;
+}
+
+void resultset_row_iterator::operator++(int)
+{
+    if(_impl) {
+        _impl->next();
+    }
 }
 
 bool resultset_row_iterator::operator!=(const resultset_row_iterator& other) const

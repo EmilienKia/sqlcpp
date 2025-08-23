@@ -10,8 +10,12 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 # Add SQLite CMake modules
 list(APPEND CMAKE_MODULE_PATH ${CMAKE_CURRENT_SOURCE_DIR}/cmake)
+
 # Add SQLite3 library
 find_package(SQLite3 REQUIRED)
+
+# Add PostgreSQL library
+find_package(PostgreSQL REQUIRED)
 
 
 add_subdirectory(src)

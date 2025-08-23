@@ -1,0 +1,840 @@
+/*
+ * Copyright (C) 2024-2025 Emilien Kia <emilien.kia+dev@gmail.com>
+ *
+ * sqlcpp is free software: you can redistribute it and/or modify it
+ * under the terms of the GNU Lesser General Public License as published
+ * by the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * sqlcpp is distributed in the hope that it will be useful, but
+ * WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
+ * See the GNU Lesser General Public License for more details.
+ *
+ * You should have received a copy of the GNU Lesser General Public License
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.";
+ */
+
+#include "sqlcpp/postgresql.hpp"
+
+#include <postgresql/16/server/catalog/pg_type_d.h>
+
+#include <string>
+#include <iostream>
+#include <limits>
+
+/*
+ * Implementation notes:
+ *
+ *
+ * TODO:
+ * - Implement generic bind by name
+ * - Implement binary format
+ * - set tatement names to allow multiple statements at a time
+ */
+
+
+namespace sqlcpp::postgresql
+{
+
+class statement;
+class resultset;
+
+
+class helpers
+{
+    helpers() = delete;
+public:
+    static blob parseBlob(const std::string_view& str);
+};
+
+blob helpers::parseBlob(const std::string_view& str) {
+    if(str.size()>=2 && str[0] == '\\' && str[1] == 'x') {
+        // Hex format
+        blob res;
+        res.reserve((str.size()-2)/2);
+        for(size_t i=2 ; i<str.size() ; i+=2) {
+            char c = 0;
+            for(size_t j=0 ; j<2 && i+j<str.size() ; ++j) {
+                c <<= 4;
+                if(str[i+j] >= '0' && str[i+j] <= '9') {
+                    c |= (str[i+j] - '0');
+                } else if(str[i+j] >= 'a' && str[i+j] <= 'f') {
+                    c |= (str[i+j] - 'a' + 10);
+                } else if(str[i+j] >= 'A' && str[i+j] <= 'F') {
+                    c |= (str[i+j] - 'A' + 10);
+                } else {
+                    // Invalid character
+                    return {};
+                }
+            }
+            res.push_back(c);
+        }
+        return res;
+    } else {
+        // Escape format
+        blob res;
+        res.reserve(str.size());
+        for(size_t i=0 ; i<str.size() ; ++i) {
+            if(str[i] == '\\') {
+                if(i+1 < str.size()) {
+                    if(str[i+1] >= '0' && str[i+1] <= '3') {
+                        // Octal format
+                        char c = 0;
+                        for(size_t j=0 ; j<3 && i+1+j < str.size() && str[i+1+j]>='0' && str[i+1+j]<='7' ; ++j) {
+                            c <<= 3;
+                            c |= (str[i+1+j]-'0');
+                        }
+                        res.push_back(c);
+                        i += 3;
+                    } else if(str[i+1] == '\\') {
+                        res.push_back('\\');
+                        ++i;
+                    } else {
+                        // Invalid escape sequence
+                        return {};
+                    }
+                } else {
+                    // Invalid escape sequence
+                    return {};
+                }
+            } else {
+                res.push_back(str[i]);
+            }
+        }
+        return res;
+    }
+}
+
+
+
+//
+// PostgreSQL's resultset iterator
+//
+
+class resultset_row_iterator_impl : public sqlcpp::resultset_row_iterator_impl, protected row
+{
+protected:
+    std::shared_ptr<PGresult> _stmt;
+    size_t _row = 0;
+
+public:
+    resultset_row_iterator_impl(std::shared_ptr<PGresult> stmt):
+        _stmt(stmt),
+        _row(0)
+    {}
+
+    virtual ~resultset_row_iterator_impl() = default;
+
+    bool ok() const;
+    operator bool() const { return ok(); }
+
+    sqlcpp::row& get() override;
+    bool next() override;
+    bool different(const sqlcpp::resultset_row_iterator_impl& other) const override;
+
+    virtual value get_value(unsigned int index) const override;
+
+    virtual std::string get_value_string(unsigned int index) const override;
+    virtual blob get_value_blob(unsigned int index) const override;
+    virtual bool get_value_bool(unsigned int index) const override;
+    virtual int get_value_int(unsigned int index) const override;
+    virtual int64_t get_value_int64(unsigned int index) const override;
+    virtual double get_value_double(unsigned int index) const override;
+};
+
+sqlcpp::row& resultset_row_iterator_impl::get()
+{
+    return *this;
+}
+
+bool resultset_row_iterator_impl::next()
+{
+    return _stmt
+        && ++_row < PQntuples(_stmt.get());
+}
+
+bool resultset_row_iterator_impl::ok() const
+{
+    return _stmt && _row < PQntuples(_stmt.get());
+}
+
+bool resultset_row_iterator_impl::different(const sqlcpp::resultset_row_iterator_impl& other) const
+{
+    if(auto impl = dynamic_cast<const resultset_row_iterator_impl*>(&other) ; impl!=nullptr) {
+        if(!ok() && !impl->ok()) {
+            // Both invalid, consider they are the same
+            return false;
+        } else {
+            // Both valid, compare stmt and row
+            return _stmt != impl->_stmt || _row != impl->_row;
+        }
+    } else {
+        // Not the same type, obviously different
+        return true;
+    }
+}
+
+value resultset_row_iterator_impl::get_value(unsigned int index) const {
+    if (PQgetisnull(_stmt.get(), _row, index)) {
+        return {nullptr};
+    }
+
+    bool isBinary = PQfformat(_stmt.get(), index) != 0;
+    int size = PQgetlength(_stmt.get(), _row, index);
+    const char *val = PQgetvalue(_stmt.get(), _row, index);
+
+    if (isBinary) {
+        switch(PQftype(_stmt.get(), index)) {
+            case BOOLOID:
+                // TODO EKI !!! What are the values ?
+                return value_type::BOOL;
+            case INT2OID:
+            case INT4OID:
+                switch(size) {
+                    case sizeof(short):
+                        return (int) *(const short *) val;
+                    case sizeof(int):
+                        return (int) *(const int *) val;
+                    default:
+                        // TODO log an error or an exception
+                        return {};
+                }
+            case INT8OID:
+                if(size == sizeof(int64_t)) {
+                    return (int64_t) *(const int64_t *) val;
+                } else {
+                    // TODO log an error or an exception
+                    return {};
+                }
+            case FLOAT4OID:
+            case FLOAT8OID:
+                switch(size) {
+                    case sizeof(float):
+                        return (double) *(const float *) val;
+                    case sizeof(double ):
+                        return (double) *(const double *) val;
+                    default:
+                        // TODO log an error or an exception
+                        return {};
+                }
+            case TEXTOID:
+            case VARCHAROID:
+            case BPCHAROID:
+            case NAMEOID:
+            case CHAROID:
+                return std::string(val, val+size);
+            case BYTEAOID:
+                // TODO To be tested ???
+                return blob{val, val+size};
+
+            default:
+                return {};
+        }
+    } else {
+        switch(PQftype(_stmt.get(), index)) {
+            case BOOLOID:
+                // TODO EKI !!! What are the values ?
+                return *val == 't';
+            case INT2OID:
+            case INT4OID:
+                return std::stoi(val);
+            case INT8OID:
+                return std::stoll(val);
+            case FLOAT4OID:
+            case FLOAT8OID:
+                return std::stod(val);
+            case TEXTOID:
+            case VARCHAROID:
+            case BPCHAROID:
+            case NAMEOID:
+            case CHAROID:
+                return std::string(val, val+size);
+            case BYTEAOID:
+                return helpers::parseBlob(std::string_view(val, size));
+            default:
+                return {};
+        }
+    }
+
+}
+
+std::string resultset_row_iterator_impl::get_value_string(unsigned int index) const 
+{
+    if (PQgetisnull(_stmt.get(), _row, index)) {
+        return "NULL";
+    }
+
+    bool isBinary = PQfformat(_stmt.get(), index) != 0;
+    int size = PQgetlength(_stmt.get(), _row, index);
+    const char *val = PQgetvalue(_stmt.get(), _row, index);
+
+    if(isBinary) {
+        // TODO To be tested ???
+        return {val, val+size};
+    } else {
+        return {val, val+size};
+    }
+}
+
+blob resultset_row_iterator_impl::get_value_blob(unsigned int index) const 
+{
+    if (PQgetisnull(_stmt.get(), _row, index)) {
+        return {};
+    }
+
+    bool isBinary = PQfformat(_stmt.get(), index) != 0;
+    int size = PQgetlength(_stmt.get(), _row, index);
+    const char *val = PQgetvalue(_stmt.get(), _row, index);
+
+    if(isBinary) {
+        // TODO To be tested ???
+        return {val, val+size};
+    } else {
+        return helpers::parseBlob(std::string_view(val, size));
+    }
+}
+
+bool resultset_row_iterator_impl::get_value_bool(unsigned int index) const
+{
+    if (PQgetisnull(_stmt.get(), _row, index)) {
+        return false;
+    }
+
+    bool isBinary = PQfformat(_stmt.get(), index) != 0;
+    int size = PQgetlength(_stmt.get(), _row, index);
+    const char *val = PQgetvalue(_stmt.get(), _row, index);
+
+    if(isBinary) {
+        // TODO Todo ???
+        return false;
+    } else {
+        return *val == 't';
+    }
+}
+
+int resultset_row_iterator_impl::get_value_int(unsigned int index) const 
+{
+    if (PQgetisnull(_stmt.get(), _row, index)) {
+        return 0;
+    }
+
+    bool isBinary = PQfformat(_stmt.get(), index) != 0;
+    int size = PQgetlength(_stmt.get(), _row, index);
+    const char *val = PQgetvalue(_stmt.get(), _row, index);
+
+    if(isBinary) {
+        switch(size) {
+            case sizeof(short):
+                return (int) *(const short *) val;
+            case sizeof(int):
+                return (int) *(const int *) val;
+            default:
+                // TODO log an error or an exception
+                return 0;
+        }
+    } else {
+        return std::stoi(val);
+    }
+}
+
+int64_t resultset_row_iterator_impl::get_value_int64(unsigned int index) const 
+{
+    if (PQgetisnull(_stmt.get(), _row, index)) {
+        return 0;
+    }
+
+    bool isBinary = PQfformat(_stmt.get(), index) != 0;
+    int size = PQgetlength(_stmt.get(), _row, index);
+    const char *val = PQgetvalue(_stmt.get(), _row, index);
+
+    if(isBinary) {
+        if(size == sizeof(int64_t)) {
+            return (int64_t) *(const int64_t *) val;
+        } else {
+            // TODO log an error or an exception
+            return 0;
+        }
+    } else {
+        return std::stoll(val);
+    }
+}
+
+double resultset_row_iterator_impl::get_value_double(unsigned int index) const 
+{
+    if (PQgetisnull(_stmt.get(), _row, index)) {
+        return 0;
+    }
+
+    bool isBinary = PQfformat(_stmt.get(), index) != 0;
+    int size = PQgetlength(_stmt.get(), _row, index);
+    const char *val = PQgetvalue(_stmt.get(), _row, index);
+
+    if(isBinary) {
+        switch(size) {
+            case sizeof(float):
+                return (double) *(const float *) val;
+            case sizeof(double ):
+                return (double) *(const double *) val;
+            default:
+                // TODO log an error or an exception
+                return {};
+        }
+    } else {
+        return std::stod(val);
+    }
+}
+
+
+
+//
+// PostgreSQL's resultset
+//
+class resultset : public sqlcpp::resultset
+{
+protected:
+    std::shared_ptr<PGresult> _res;
+
+public:
+    resultset(PGresult* res) :
+        _res(res, PQclear)
+        {}
+
+    virtual ~resultset() = default;
+
+    unsigned int column_count() const override;
+    unsigned int row_count() const override;
+
+    std::string column_name(unsigned int index) const override;
+    unsigned int column_index(const std::string& name) const override;
+    std::string column_origin_name(unsigned int index) const override;
+    std::string table_origin_name(unsigned int index) const override;
+    value_type column_type(unsigned int index) const override;
+
+    bool has_row() const override;
+
+
+
+    sqlcpp::resultset_row_iterator begin() const override;
+    sqlcpp::resultset_row_iterator end() const override;
+};
+
+unsigned int resultset::column_count() const
+{
+    int res = PQnfields(_res.get());
+    return res;
+}
+
+unsigned int resultset::row_count() const
+{
+    return PQntuples(_res.get());
+}
+
+std::string resultset::column_name(unsigned int index) const
+{
+    return PQfname(_res.get(), index);
+}
+
+unsigned int resultset::column_index(const std::string& name) const
+{
+    int res = PQfnumber(_res.get(), name.c_str());
+    if(res >= 0) {
+        return res;
+    }
+    return std::numeric_limits<unsigned int>::max();
+}
+
+std::string resultset::column_origin_name(unsigned int index) const 
+{
+    // Not supported directly for PostgreSQL
+    // Look at PQftablecol
+    // TODO
+    return "";
+}
+
+std::string resultset::table_origin_name(unsigned int index) const
+{
+    // Not supported for PostgreSQL
+    // Look at PQftable
+    // TODO
+    return "";
+}
+
+value_type resultset::column_type(unsigned int index) const
+{
+    Oid type_oid = PQftype(_res.get(), index);
+    switch(type_oid) {
+        case BOOLOID:
+            return value_type::BOOL;
+        case INT2OID:
+        case INT4OID:
+            return value_type::INT;
+        case INT8OID:
+            return value_type::INT64;
+        case FLOAT4OID:
+        case FLOAT8OID:
+            return value_type::DOUBLE;
+        case TEXTOID:
+        case VARCHAROID:
+        case BPCHAROID:
+        case NAMEOID:
+        case CHAROID:
+            return value_type::STRING;
+        case BYTEAOID:
+            return value_type::BLOB;
+        default:
+            return value_type::UNSUPPORTED;
+    }
+
+}
+
+bool resultset::has_row() const
+{
+    ExecStatusType type = PQresultStatus(_res.get());
+    return (type == PGRES_TUPLES_OK
+// TODO Support single-row or tuple chunk modes
+//            || type == PGRES_SINGLE_TUPLE || type == PGRES_TUPLES_CHUNK
+
+            )
+        && PQntuples(_res.get()) > 0;
+}
+
+sqlcpp::resultset_row_iterator resultset::begin() const
+{
+    return std::move(sqlcpp::resultset::create_iterator(std::make_unique<resultset_row_iterator_impl>(_res)));
+}
+
+sqlcpp::resultset_row_iterator resultset::end() const
+{
+    return std::move(sqlcpp::resultset::create_iterator(std::make_unique<resultset_row_iterator_impl>(nullptr)));
+}
+
+
+
+//
+// PostgreSQL's statement
+//
+
+class statement : public sqlcpp::statement
+{
+protected:
+    std::weak_ptr<PGconn> _db;
+    std::string _stmt_name;
+    mutable std::shared_ptr<PGresult> _stmt_info;
+    std::vector<value> _params;
+
+public:
+    explicit statement(std::shared_ptr<PGconn> db, const std::string& stmt_name) :
+        _db(db), _stmt_name(stmt_name)
+        {}
+
+    virtual ~statement() {}
+
+    std::unique_ptr<sqlcpp::resultset> execute() override;
+
+    unsigned int parameter_count() const override;
+    int parameter_index(const std::string& name) const override;
+    std::string parameter_name(unsigned int index) const override;
+
+    statement& bind(const std::string& name, std::nullptr_t) override;
+    statement& bind(const std::string& name, const std::string& value) override;
+    statement& bind(const std::string& name, const std::string_view& value) override;
+    statement& bind(const std::string& name, const blob& value) override;
+    statement& bind(const std::string& name, bool value) override;
+    statement& bind(const std::string& name, int value) override;
+    statement& bind(const std::string& name, int64_t value) override;
+    statement& bind(const std::string& name, double value) override;
+    statement& bind(const std::string& name, const value& value) override;
+
+    statement& bind(unsigned int index, std::nullptr_t) override;
+    statement& bind(unsigned int index, const std::string& value) override;
+    statement& bind(unsigned int index, const std::string_view& value) override;
+    statement& bind(unsigned int index, const blob& value) override;
+    statement& bind(unsigned int index, bool value) override;
+    statement& bind(unsigned int index, int value) override;
+    statement& bind(unsigned int index, int64_t value) override;
+    statement& bind(unsigned int index, double value) override;
+    statement& bind(unsigned int index, const value& value) override;
+
+};
+
+static inline std::string to_hex_string(const blob& data) {
+    static const char hex_digits[] = "0123456789abcdef";
+    std::string hex_str;
+    hex_str.reserve(data.size() * 2);
+    for (unsigned char byte : data) {
+        hex_str.push_back(hex_digits[byte >> 4]);
+        hex_str.push_back(hex_digits[byte & 0x0F]);
+    }
+    return hex_str;
+}
+
+std::unique_ptr<sqlcpp::resultset> statement::execute()
+{
+    std::vector<std::string> values;
+    for(auto& v : _params) {
+        values.push_back(
+            std::visit([&](auto&& arg) -> std::string {
+                using T = std::decay_t<decltype(arg)>;
+                if constexpr(std::is_same_v<T, std::monostate>) {
+                    return "NULL";
+                } else if constexpr(std::is_same_v<T, std::nullptr_t>) {
+                    return "NULL";
+                } else if constexpr(std::is_same_v<T, std::string>) {
+                    return arg;
+                } else if constexpr(std::is_same_v<T, blob>) {
+                    return to_hex_string(arg);
+                } else if constexpr(std::is_same_v<T, bool>) {
+                    return arg ? "TRUE" : "FALSE";
+                } else {
+                    return std::to_string(arg);
+                }
+            }, v)
+        );
+    }
+    std::vector<const char*> rc;
+    rc.reserve(values.size());
+    for(auto& v : values) {
+        rc.push_back(v.c_str());
+    }
+
+    PGresult *res = PQexecPrepared(_db.lock().get(), _stmt_name.c_str(), rc.size(), rc.data(), nullptr, nullptr, 0);
+    // TODO support binary format for slight better performances
+    switch(PQresultStatus(res)) {
+        case PGRES_COMMAND_OK:
+        case PGRES_TUPLES_OK:
+//            PQclear(res);
+            return std::unique_ptr<sqlcpp::resultset>{new resultset(res)};
+        default:
+            std::cerr << "Failed to execute statement: " << PQerrorMessage(_db.lock().get()) << std::endl;
+            PQclear(res);
+            // TODO throw exception
+            return {};
+    }
+}
+
+unsigned int statement::parameter_count() const
+{
+    if(!_stmt_info) {
+        PGresult* res = PQdescribePrepared(_db.lock().get(), _stmt_name.c_str());
+        if(PQresultStatus(_stmt_info.get()) != PGRES_COMMAND_OK) {
+            // TODO process error, throw exception
+            return 0;
+        }
+        _stmt_info = std::shared_ptr<PGresult>(res , PQclear);
+    }
+    return PQnparams(_stmt_info.get());
+}
+
+int statement::parameter_index(const std::string& name) const 
+{
+    // Parameter names not supported for PostgreSQL yet
+    // TODO
+    return -1;
+}
+
+std::string statement::parameter_name(unsigned int index) const 
+{
+    // Parameter names not supported for PostgreSQL yet
+    // TODO
+    return "";
+}
+
+statement& statement::bind(const std::string& name, std::nullptr_t) 
+{
+    // Parameter names not supported for PostgreSQL yet
+    // TODO
+    return *this;
+}
+
+statement& statement::bind(const std::string& name, const std::string& value)
+{
+    // Parameter names not supported for PostgreSQL yet
+    // TODO
+    return *this;
+}
+
+statement& statement::bind(const std::string& name, const std::string_view& value)
+{
+    // Parameter names not supported for PostgreSQL yet
+    // TODO
+    return *this;
+}
+
+statement& statement::bind(const std::string& name, const blob& value) 
+{
+    // Parameter names not supported for PostgreSQL yet
+    // TODO
+    return *this;
+}
+
+statement& statement::bind(const std::string& name, bool value)
+{
+    // Parameter names not supported for PostgreSQL yet
+    // TODO
+    return *this;
+}
+
+statement& statement::bind(const std::string& name, int value)
+{
+    // Parameter names not supported for PostgreSQL yet
+    // TODO
+    return *this;
+}
+
+statement& statement::bind(const std::string& name, int64_t value)  
+{
+    // Parameter names not supported for PostgreSQL yet
+    // TODO
+    return *this;
+}
+
+statement& statement::bind(const std::string& name, double value)  
+{
+    // Parameter names not supported for PostgreSQL yet
+    // TODO
+    return *this;
+}
+
+statement& statement::bind(const std::string& name, const value& value)  
+{
+    // Parameter names not supported for PostgreSQL yet
+    // TODO
+//    std::visit([&](auto&& arg) {
+//        bind(name, arg);
+//    }, value);
+    return *this;
+}
+
+static inline std::vector<value>& ensure(std::vector<value>& params, unsigned int index)
+{
+    if(params.size() <= index) {
+        params.resize(index + 1);
+    }
+    return params;
+}
+
+
+statement& statement::bind(unsigned int index, std::nullptr_t)  
+{
+    ensure(_params, index)[index] = nullptr;
+    // TODO process error, throw exception
+    return *this;
+}
+
+statement& statement::bind(unsigned int index, const std::string& value)  
+{
+    ensure(_params, index)[index] = value;
+    // TODO process error, throw exception
+    return *this;
+}
+
+statement& statement::bind(unsigned int index, const std::string_view& value)  
+{
+    ensure(_params, index)[index] = std::string(value);
+    // TODO process error, throw exception
+    return *this;
+}
+
+statement& statement::bind(unsigned int index, const blob& value)  
+{
+    ensure(_params, index)[index] = value;
+    // TODO process error, throw exception
+    return *this;
+}
+
+statement& statement::bind(unsigned int index, bool value)
+{
+    ensure(_params, index)[index] = value;
+    // TODO process error, throw exception
+    return *this;
+}
+
+statement& statement::bind(unsigned int index, int value)
+{
+    ensure(_params, index)[index] = value;
+    // TODO process error, throw exception
+    return *this;
+}
+
+statement& statement::bind(unsigned int index, int64_t value)  
+{
+    ensure(_params, index)[index] = value;
+    // TODO process error, throw exception
+    return *this;
+}
+
+statement& statement::bind(unsigned int index, double value)  
+{
+    ensure(_params, index)[index] = value;
+    // TODO process error, throw exception
+    return *this;
+}
+
+statement& statement::bind(unsigned int index, const value& value)  
+{
+    std::visit([&](auto&& arg) {
+        bind(index, arg);
+    }, value);
+    return *this;
+}
+
+//
+// PostgreSQL's connection
+//
+
+connection::connection(PGconn* db):
+_db(db, &PQfinish)
+{
+}
+
+connection::~connection()
+{
+}
+
+std::unique_ptr<connection> connection::create(const std::string& connection_string)
+{
+    PGconn* db = PQconnectdb(connection_string.c_str());
+    if(ConnStatusType status = PQstatus(db); status!=CONNECTION_OK) {
+        PQfinish(db);
+        // TODO throw exception
+        return {};
+    }
+    return std::make_unique<connection>(db);
+}
+
+void connection::execute(const std::string& query)
+{
+    char* err_msg = nullptr;
+
+    PGresult* res = PQexec(_db.get(), query.c_str());
+    switch(PQresultStatus(res)) {
+        case PGRES_COMMAND_OK:
+        case PGRES_TUPLES_OK:
+            PQclear(res);
+            return;
+        default:
+            std::cerr << "Failed to execute statement: " << PQerrorMessage(_db.get()) << std::endl;
+            PQclear(res);
+            // TODO throw exception
+            return;
+    }
+}
+
+std::unique_ptr<sqlcpp::statement> connection::prepare(const std::string& query)
+{
+    std::string stmt_name{}; // TODO Generate a unique statement name
+    PGresult* res = PQprepare(_db.get(), stmt_name.c_str(), query.c_str(), 0, nullptr);
+    switch(PQresultStatus(res)) {
+        case PGRES_COMMAND_OK:
+            PQclear(res);
+            return std::make_unique<statement>(_db, stmt_name);
+        default:
+            std::cerr << "Failed to prepare statement: " << PQerrorMessage(_db.get()) << std::endl;
+            PQclear(res);
+            // TODO throw exception
+            return {};
+    }
+}
+
+} // namespace sqlcpp::postgresql

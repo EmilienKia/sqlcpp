@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2024 Emilien Kia <emilien.kia+dev@gmail.com>
+ * Copyright (C) 2024-2025 Emilien Kia <emilien.kia+dev@gmail.com>
  *
  * sqlcpp is free software: you can redistribute it and/or modify it
  * under the terms of the GNU Lesser General Public License as published
@@ -56,6 +56,7 @@ enum value_type {
     NULL_VALUE = 0,
     STRING,
     BLOB,
+    BOOL,
     INT,
     INT64,
     DOUBLE,
@@ -63,7 +64,7 @@ enum value_type {
 };
 
 typedef std::vector<unsigned char> blob;
-typedef std::variant<std::monostate, std::nullptr_t, std::string, blob, int, int64_t, double> value;
+typedef std::variant<std::monostate, std::nullptr_t, std::string, blob, bool, int, int64_t, double> value;
 
 
 class statement
@@ -84,6 +85,7 @@ public:
     virtual statement& bind(const std::string& name, const std::string& value) = 0;
     virtual statement& bind(const std::string& name, const std::string_view& value) = 0;
     virtual statement& bind(const std::string& name, const blob& value) = 0;
+    virtual statement& bind(const std::string& name, bool value) = 0;
     virtual statement& bind(const std::string& name, int value) = 0;
     virtual statement& bind(const std::string& name, int64_t value) = 0;
     virtual statement& bind(const std::string& name, double value) = 0;
@@ -93,6 +95,7 @@ public:
     virtual statement& bind(unsigned int index, const std::string& value) = 0;
     virtual statement& bind(unsigned int index, const std::string_view& value) = 0;
     virtual statement& bind(unsigned int index, const blob& value) = 0;
+    virtual statement& bind(unsigned int index, bool value) = 0;
     virtual statement& bind(unsigned int index, int value) = 0;
     virtual statement& bind(unsigned int index, int64_t value) = 0;
     virtual statement& bind(unsigned int index, double value) = 0;
@@ -110,6 +113,7 @@ public:
 
     virtual std::string get_value_string(unsigned int index) const = 0;
     virtual blob get_value_blob(unsigned int index) const = 0;
+    virtual bool get_value_bool(unsigned int index) const = 0;
     virtual int get_value_int(unsigned int index) const = 0;
     virtual int64_t get_value_int64(unsigned int index) const = 0;
     virtual double get_value_double(unsigned int index) const = 0;
@@ -139,22 +143,20 @@ protected:
 public:
     using value_type = row;
 
-
     resultset_row_iterator() = default;
     ~resultset_row_iterator() = default;
 
-    resultset_row_iterator(const resultset_row_iterator&) = delete; //default;
+    resultset_row_iterator(const resultset_row_iterator&) = delete;
     resultset_row_iterator(resultset_row_iterator&&) = default;
 
-    resultset_row_iterator& operator=(const resultset_row_iterator&) = delete; //default;
+    resultset_row_iterator& operator=(const resultset_row_iterator&) = delete;
     resultset_row_iterator& operator=(resultset_row_iterator&&) = default;
 
     resultset_row_iterator& operator++();
-    void operator++(int) { ++*this; }
+    void operator++(int);
     bool operator!=(const resultset_row_iterator& other) const;
     row& operator*();
     row& operator->();
-
 };
 
 class resultset
