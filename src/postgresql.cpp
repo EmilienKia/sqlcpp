@@ -536,7 +536,7 @@ public:
 
     virtual ~statement() {}
 
-    std::unique_ptr<sqlcpp::resultset> execute() override;
+    std::shared_ptr<sqlcpp::resultset> execute() override;
 
     unsigned int parameter_count() const override;
     int parameter_index(const std::string& name) const override;
@@ -575,7 +575,7 @@ static inline std::string to_hex_string(const blob& data) {
     return hex_str;
 }
 
-std::unique_ptr<sqlcpp::resultset> statement::execute()
+std::shared_ptr<sqlcpp::resultset> statement::execute()
 {
     size_t sz = _params.size();
 
@@ -615,7 +615,7 @@ std::unique_ptr<sqlcpp::resultset> statement::execute()
     switch(PQresultStatus(res)) {
         case PGRES_COMMAND_OK:
         case PGRES_TUPLES_OK:
-            return std::unique_ptr<sqlcpp::resultset>{new resultset(res)};
+            return std::make_shared<resultset>(res);
         default:
             std::cerr << "Failed to execute statement: " << PQerrorMessage(_db.lock().get()) << std::endl;
             PQclear(res);
@@ -803,7 +803,7 @@ connection::~connection()
 {
 }
 
-std::unique_ptr<connection> connection::create(const std::string& connection_string)
+std::shared_ptr<connection> connection::create(const std::string& connection_string)
 {
     PGconn* db = PQconnectdb(connection_string.c_str());
     if(ConnStatusType status = PQstatus(db); status!=CONNECTION_OK) {
@@ -811,7 +811,7 @@ std::unique_ptr<connection> connection::create(const std::string& connection_str
         // TODO throw exception
         return {};
     }
-    return std::make_unique<connection>(db);
+    return std::make_shared<connection>(db);
 }
 
 void connection::execute(const std::string& query)
@@ -832,7 +832,7 @@ void connection::execute(const std::string& query)
     }
 }
 
-std::unique_ptr<sqlcpp::statement> connection::prepare(const std::string& query)
+std::shared_ptr<sqlcpp::statement> connection::prepare(const std::string& query)
 {
     static unsigned int count = 0;
     std::ostringstream oss;
@@ -842,7 +842,7 @@ std::unique_ptr<sqlcpp::statement> connection::prepare(const std::string& query)
     switch(PQresultStatus(res)) {
         case PGRES_COMMAND_OK:
             PQclear(res);
-            return std::make_unique<statement>(_db, stmt_name);
+            return std::make_shared<statement>(_db, stmt_name);
         default:
             std::cerr << "Failed to prepare statement: " << PQerrorMessage(_db.get()) << std::endl;
             PQclear(res);

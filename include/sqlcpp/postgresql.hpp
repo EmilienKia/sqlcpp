@@ -38,11 +38,11 @@ namespace sqlcpp::postgresql
         connection(PGconn* db);
         virtual ~connection();
 
-        static std::unique_ptr<connection> create(const std::string& connection_string);
+        static std::shared_ptr<connection> create(const std::string& connection_string);
 
         void execute(const std::string& query) override;
 
-        std::unique_ptr<sqlcpp::statement> prepare(const std::string& query) override;
+        std::shared_ptr<sqlcpp::statement> prepare(const std::string& query) override;
     };
 
 

@@ -5,9 +5,10 @@ add_executable(utest
         runner.cpp
         tests-sqlite.cpp
         tests-postgresql.cpp
+        tests-mariadb.cpp
 )
 
-target_link_libraries(utest sqlcpp sqlcpp-sqlite sqlcpp-postgresql)
+target_link_libraries(utest sqlcpp sqlcpp-sqlite sqlcpp-postgresql sqlcpp-mariadb)
 
 add_test(NAME utest COMMAND utest)
 

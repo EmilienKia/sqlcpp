@@ -17,6 +17,11 @@ find_package(SQLite3 REQUIRED)
 # Add PostgreSQL library
 find_package(PostgreSQL REQUIRED)
 
+#Add MariaDB library
+find_package(PkgConfig REQUIRED)
+pkg_check_modules(MARIADB REQUIRED libmariadb)
+
+
 
 add_subdirectory(src)
 add_subdirectory(tests)

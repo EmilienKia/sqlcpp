@@ -24,9 +24,18 @@ target_link_libraries(sqlcpp-sqlite sqlcpp SQLite::SQLite3)
 # PostgreSQL library
 #
 add_library(sqlcpp-postgresql SHARED
-        ../include/sqlcpp/sqlite.hpp
+        ../include/sqlcpp/postgresql.hpp
         postgresql.cpp
 )
 
 target_link_libraries(sqlcpp-sqlite sqlcpp PostgreSQL::PostgreSQL)
 
+#
+# MariaDB library
+#
+add_library(sqlcpp-mariadb SHARED
+        ../include/sqlcpp/mariadb.hpp
+        mariadb.cpp
+)
+
+target_link_libraries(sqlcpp-mariadb sqlcpp ${MARIADB_LIBRARIES})

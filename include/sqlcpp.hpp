@@ -43,11 +43,11 @@ protected:
 public:
     virtual ~connection() = default;
 
-    static std::unique_ptr<connection> create(const std::string& connection_string);
+    static std::shared_ptr<connection> create(const std::string& connection_string);
 
     virtual void execute(const std::string& query) = 0;
 
-    virtual std::unique_ptr<statement> prepare(const std::string& query) = 0;
+    virtual std::shared_ptr<statement> prepare(const std::string& query) = 0;
 };
 
 
@@ -75,7 +75,7 @@ protected:
 public:
     virtual ~statement() = default;
 
-    virtual std::unique_ptr<resultset> execute() = 0;
+    virtual std::shared_ptr<resultset> execute() = 0;
 
     virtual unsigned int parameter_count() const = 0;
     virtual int parameter_index(const std::string& name) const = 0;
@@ -137,10 +137,10 @@ public:
 class resultset_row_iterator : public std::input_iterator_tag
 {
 protected:
-    std::unique_ptr<resultset_row_iterator_impl> _impl;
+    std::shared_ptr<resultset_row_iterator_impl> _impl;
 
     friend class resultset;
-    resultset_row_iterator(std::unique_ptr<resultset_row_iterator_impl>&& impl) : _impl(std::move(impl)) {}
+    resultset_row_iterator(std::shared_ptr<resultset_row_iterator_impl>&& impl) : _impl(std::move(impl)) {}
 
 public:
     using value_type = row;
@@ -166,8 +166,8 @@ class resultset
 protected:
     resultset() = default;
 
-    inline static resultset_row_iterator create_iterator(std::unique_ptr<resultset_row_iterator_impl>&& impl) {
-        return resultset_row_iterator(std::move(impl));
+    inline static resultset_row_iterator create_iterator(std::shared_ptr<resultset_row_iterator_impl>&& impl) {
+        return {std::move(impl)};
     }
 
 public:

@@ -19,6 +19,7 @@
 
 #include <iostream>
 #include <limits>
+#include <utility>
 
 /*
  * Refs:
@@ -66,7 +67,7 @@ protected:
 
 public:
     resultset_row_iterator_impl(std::shared_ptr<sqlite3_stmt> stmt, int state) :
-        _stmt(stmt),
+        _stmt(std::move(stmt)),
         _state(state)
         {}
 
@@ -308,7 +309,7 @@ public:
 
     virtual ~statement() {}
 
-    std::unique_ptr<sqlcpp::resultset> execute() override;
+    std::shared_ptr<sqlcpp::resultset> execute() override;
 
     unsigned int parameter_count() const override;
     int parameter_index(const std::string& name) const override;
@@ -336,13 +337,13 @@ public:
 
 };
 
-std::unique_ptr<sqlcpp::resultset> statement::execute()
+std::shared_ptr<sqlcpp::resultset> statement::execute()
 {
     int rc = sqlite3_step(_stmt.get());
     switch(rc) {
         case SQLITE_DONE:
         case SQLITE_ROW:
-            return std::unique_ptr<sqlcpp::resultset>{new resultset(_stmt, rc)};
+            return std::shared_ptr<sqlcpp::resultset>{new resultset(_stmt, rc)};
         default:
             // TODO process errors
             // Throw exception
@@ -552,7 +553,7 @@ connection::~connection()
     }
 }
 
-std::unique_ptr<connection> connection::create(const std::string& connection_string)
+std::shared_ptr<connection> connection::create(const std::string& connection_string)
 {
     sqlite3 *db;
     int rc = sqlite3_open(connection_string.c_str(), &db);
@@ -561,7 +562,7 @@ std::unique_ptr<connection> connection::create(const std::string& connection_str
         // TODO throw exception
         return {};
     }
-    return std::make_unique<connection>(db);
+    return std::make_shared<connection>(db);
 }
 
 void connection::execute(const std::string& query)
@@ -575,7 +576,7 @@ void connection::execute(const std::string& query)
     }
 }
 
-std::unique_ptr<sqlcpp::statement> connection::prepare(const std::string& query)
+std::shared_ptr<sqlcpp::statement> connection::prepare(const std::string& query)
 {
     int rc;
     sqlite3_stmt* res;

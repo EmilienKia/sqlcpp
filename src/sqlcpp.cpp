@@ -27,7 +27,7 @@ namespace sqlcpp
 // SQLCPP connection creation
 //
 
-std::unique_ptr<connection> connection::create(const std::string& connection_string)
+std::shared_ptr<connection> connection::create(const std::string& connection_string)
 {
     return {};
 }
