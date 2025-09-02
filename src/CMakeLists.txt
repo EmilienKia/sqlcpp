@@ -50,5 +50,14 @@ add_library(sqlcpp-odbc SHARED
         odbc.cpp
 )
 
-target_link_libraries(sqlcpp-odbc sqlcpp ${ODBC_LIBRARY})
-target_include_directories(sqlcpp-odbc PRIVATE ${ODBC_INCLUDE_DIR})
+# Link ODBC libraries depending on detection method
+if(UNIX AND ODBC_FOUND)
+    # Use pkg-config variables for unixODBC
+    target_link_libraries(sqlcpp-odbc sqlcpp ${ODBC_LIBRARIES})
+    target_include_directories(sqlcpp-odbc PRIVATE ${ODBC_INCLUDE_DIRS})
+    target_compile_options(sqlcpp-odbc PRIVATE ${ODBC_CFLAGS_OTHER})
+else()
+    # Use manual detection variables
+    target_link_libraries(sqlcpp-odbc sqlcpp ${ODBC_LIBRARY})
+    target_include_directories(sqlcpp-odbc PRIVATE ${ODBC_INCLUDE_DIR})
+endif()
