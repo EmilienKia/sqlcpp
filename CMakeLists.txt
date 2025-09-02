@@ -17,9 +17,24 @@ find_package(SQLite3 REQUIRED)
 # Add PostgreSQL library
 find_package(PostgreSQL REQUIRED)
 
-#Add MariaDB library
+# Add MariaDB library (optional)
 find_package(PkgConfig REQUIRED)
-pkg_check_modules(MARIADB REQUIRED libmariadb)
+pkg_check_modules(MARIADB libmariadb)
+
+# Add ODBC library (unixODBC for Unix/Linux)
+if(UNIX)
+    # Use PkgConfig to find unixODBC
+    pkg_check_modules(ODBC odbc)
+    if(NOT ODBC_FOUND)
+        # Fallback to manual detection
+        find_library(ODBC_LIBRARY NAMES odbc REQUIRED)
+        find_path(ODBC_INCLUDE_DIR NAMES sql.h REQUIRED)
+    endif()
+else()
+    # Windows ODBC detection
+    find_library(ODBC_LIBRARY NAMES odbc32 REQUIRED)
+    find_path(ODBC_INCLUDE_DIR NAMES sql.h REQUIRED)
+endif()
 
 
 
