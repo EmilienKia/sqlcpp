@@ -29,6 +29,12 @@ namespace sqlcpp
 
 std::shared_ptr<connection> connection::create(const std::string& connection_string)
 {
+    // The main factory method is kept minimal and driver-agnostic
+    // Users should directly use specific driver implementations:
+    // - sqlcpp::sqlite::connection::create() for SQLite
+    // - sqlcpp::postgresql::connection::create() for PostgreSQL  
+    // - sqlcpp::mariadb::connection::create() for MariaDB
+    // - sqlcpp::odbc::connection::create() for ODBC
     return {};
 }
 
