@@ -6,9 +6,14 @@ add_executable(utest
         tests-sqlite.cpp
         tests-postgresql.cpp
         tests-mariadb.cpp
+        tests-odbc.cpp
 )
 
-target_link_libraries(utest sqlcpp sqlcpp-sqlite sqlcpp-postgresql sqlcpp-mariadb)
+if(MARIADB_FOUND)
+    target_link_libraries(utest sqlcpp sqlcpp-sqlite sqlcpp-postgresql sqlcpp-mariadb sqlcpp-odbc)
+else()
+    target_link_libraries(utest sqlcpp sqlcpp-sqlite sqlcpp-postgresql sqlcpp-odbc)
+endif()
 
 add_test(NAME utest COMMAND utest)
 
