@@ -18,7 +18,7 @@
 #ifndef SQLCPP_POSTGRESQL_HPP
 #define SQLCPP_POSTGRESQL_HPP
 
-#include "../sqlcpp.hpp"
+#include "sqlcpp.hpp"
 
 #include <postgresql/libpq-fe.h>
 

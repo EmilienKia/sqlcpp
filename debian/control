@@ -1,0 +1,63 @@
+Source: libsqlcpp
+Maintainer: Emilien Kia <emilien.kia+dev@gmail.com>
+Section: database
+Priority: optional
+Standards-Version: 4.7.2
+Homepage: https://github.com/emilienkia/libsqlcpp
+Build-Depends: cmake (>= 3.15), dh-cmake, dh-cmake-compat (= 1), dh-sequence-cmake, debhelper (>= 11), libsqlite3-dev, libpq-dev, postgresql-server-dev-16, libmariadb-dev
+
+Package: libsqlcpp
+Description: C++ wrapper library for SQL databases
+Architecture: any
+Section: database
+Priority: optional
+Depends: ${shlibs:Depends}, ${misc:Depends}
+
+Package: libsqlcpp-dev
+Description: C++ wrapper library for SQL databases (development files)
+Architecture: any
+Section: libdevel
+Priority: optional
+Depends: libsqlcpp (= ${binary:Version}), ${misc:Depends}
+
+Package: libsqlcpp-sqlite
+Description: SQLite driver for libsqlcpp, the C++ wrapper library for SQL databases
+Architecture: any
+Section: database
+Priority: optional
+Depends: libsqlcpp (= ${binary:Version}), ${shlibs:Depends}, ${misc:Depends}
+
+Package: libsqlcpp-sqlite-dev
+Description: SQLite driver for libsqlcpp, the C++ wrapper library for SQL databases (development files)
+Architecture: any
+Section: libdevel
+Priority: optional
+Depends: libsqlcpp-sqlite (= ${binary:Version}), libsqlcpp-dev (= ${binary:Version}), ${misc:Depends}
+
+Package: libsqlcpp-postgresql
+Description: PostgreSQL driver for libsqlcpp, the C++ wrapper library for SQL databases
+Architecture: any
+Section: database
+Priority: optional
+Depends: libsqlcpp (= ${binary:Version}), ${shlibs:Depends}, ${misc:Depends}
+
+Package: libsqlcpp-postgresql-dev
+Description: PostgreSQL driver for libsqlcpp, the C++ wrapper library for SQL databases (development files)
+Architecture: any
+Section: libdevel
+Priority: optional
+Depends: libsqlcpp-postgresql (= ${binary:Version}), libsqlcpp-dev (= ${binary:Version}), ${misc:Depends}
+
+Package: libsqlcpp-mariadb
+Description: MariaDB driver for libsqlcpp, the C++ wrapper library for SQL databases
+Architecture: any
+Section: database
+Priority: optional
+Depends: libsqlcpp (= ${binary:Version}), ${shlibs:Depends}, ${misc:Depends}
+
+Package: libsqlcpp-mariadb-dev
+Description: MariaDB driver for libsqlcpp, the C++ wrapper library for SQL databases (development files)
+Architecture: any
+Section: libdevel
+Priority: optional
+Depends: libsqlcpp-mariadb (= ${binary:Version}), libsqlcpp-dev (= ${binary:Version}), ${misc:Depends}

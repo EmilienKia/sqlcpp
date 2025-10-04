@@ -6,8 +6,23 @@ include_directories(${CMAKE_CURRENT_SOURCE_DIR}/../include)
 #
 
 add_library(sqlcpp SHARED
-        ../include/sqlcpp.hpp
+        ../include/sqlcpp/sqlcpp.hpp
         sqlcpp.cpp
+)
+set_target_properties(sqlcpp PROPERTIES
+        PUBLIC_HEADER ../include/sqlcpp/sqlcpp.hpp
+        VERSION ${CMAKE_PROJECT_VERSION}
+        SOVERSION 0
+)
+install(TARGETS sqlcpp
+        EXPORT sqlcppTargets
+        LIBRARY
+            DESTINATION ${CMAKE_INSTALL_LIBDIR}
+            COMPONENT sqlcpp
+            NAMELINK_COMPONENT sqlcpp-dev
+        PUBLIC_HEADER
+            DESTINATION "${CMAKE_INSTALL_INCLUDEDIR}/sqlcpp"
+            COMPONENT sqlcpp-dev
 )
 
 #
@@ -17,8 +32,22 @@ add_library(sqlcpp-sqlite SHARED
         ../include/sqlcpp/sqlite.hpp
         sqlite.cpp
 )
-
 target_link_libraries(sqlcpp-sqlite sqlcpp SQLite::SQLite3)
+set_target_properties(sqlcpp-sqlite PROPERTIES
+        PUBLIC_HEADER ../include/sqlcpp/sqlite.hpp
+        VERSION ${CMAKE_PROJECT_VERSION}
+        SOVERSION 0
+)
+install(TARGETS sqlcpp-sqlite
+        EXPORT sqlcppTargets
+        LIBRARY
+            DESTINATION ${CMAKE_INSTALL_LIBDIR}
+            COMPONENT sqlite
+            NAMELINK_COMPONENT sqlite-dev
+        PUBLIC_HEADER
+            DESTINATION "${CMAKE_INSTALL_INCLUDEDIR}/sqlcpp"
+            COMPONENT sqlite-dev
+)
 
 #
 # PostgreSQL library
@@ -27,8 +56,22 @@ add_library(sqlcpp-postgresql SHARED
         ../include/sqlcpp/postgresql.hpp
         postgresql.cpp
 )
-
-target_link_libraries(sqlcpp-sqlite sqlcpp PostgreSQL::PostgreSQL)
+target_link_libraries(sqlcpp-postgresql sqlcpp PostgreSQL::PostgreSQL)
+set_target_properties(sqlcpp-postgresql PROPERTIES
+        PUBLIC_HEADER ../include/sqlcpp/postgresql.hpp
+        VERSION ${CMAKE_PROJECT_VERSION}
+        SOVERSION 0
+)
+install(TARGETS sqlcpp-postgresql
+        EXPORT sqlcppTargets
+        LIBRARY
+            DESTINATION ${CMAKE_INSTALL_LIBDIR}
+            COMPONENT postgresql
+            NAMELINK_COMPONENT postgresql-dev
+        PUBLIC_HEADER
+            DESTINATION "${CMAKE_INSTALL_INCLUDEDIR}/sqlcpp"
+            COMPONENT postgresql-dev
+)
 
 #
 # MariaDB library
@@ -37,5 +80,19 @@ add_library(sqlcpp-mariadb SHARED
         ../include/sqlcpp/mariadb.hpp
         mariadb.cpp
 )
-
 target_link_libraries(sqlcpp-mariadb sqlcpp ${MARIADB_LIBRARIES})
+set_target_properties(sqlcpp-mariadb PROPERTIES
+        PUBLIC_HEADER ../include/sqlcpp/mariadb.hpp
+        VERSION ${CMAKE_PROJECT_VERSION}
+        SOVERSION 0
+)
+install(TARGETS sqlcpp-mariadb
+        EXPORT sqlcppTargets
+        LIBRARY
+            DESTINATION ${CMAKE_INSTALL_LIBDIR}
+            COMPONENT mariadb
+            NAMELINK_COMPONENT mariadb-dev
+        PUBLIC_HEADER
+            DESTINATION "${CMAKE_INSTALL_INCLUDEDIR}/sqlcpp"
+            COMPONENT mariadb-dev
+)

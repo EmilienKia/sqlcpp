@@ -15,7 +15,7 @@
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.";
  */
 
-#include "sqlcpp.hpp"
+#include "../include/sqlcpp/sqlcpp.hpp"
 
 #include <stdexcept>
 #include <iostream>

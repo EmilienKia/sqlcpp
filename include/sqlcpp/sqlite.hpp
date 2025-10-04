@@ -18,7 +18,7 @@
 #ifndef SQLCPP_SQLITE_HPP
 #define SQLCPP_SQLITE_HPP
 
-#include "../sqlcpp.hpp"
+#include "sqlcpp.hpp"
 
 #include <sqlite3.h>
 
