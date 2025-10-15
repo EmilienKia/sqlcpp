@@ -24,11 +24,14 @@
 
 namespace sqlcpp::mariadb {
 
+class mysql_statement;
 
 class connection : public sqlcpp::connection
 {
 protected:
     std::shared_ptr<MYSQL> _db;
+
+    std::shared_ptr<mysql_statement> _last_stmt;
 
 public:
     static std::shared_ptr<connection> create(const std::string& connection_string);
@@ -42,7 +45,7 @@ public:
     virtual ~connection() = default;
 
     std::shared_ptr<sqlcpp::statement> prepare(const std::string& sql) override;
-    void execute(const std::string& sql) override;
+    std::shared_ptr<stats_result> execute(const std::string& sql) override;
 };
 
 

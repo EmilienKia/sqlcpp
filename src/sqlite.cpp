@@ -16,6 +16,7 @@
  */
 
 #include "sqlcpp/sqlite.hpp"
+#include "sqlcpp/details.hpp"
 
 #include <iostream>
 #include <limits>
@@ -73,21 +74,23 @@ public:
 
     virtual ~resultset_row_iterator_impl() = default;
 
-    sqlcpp::row& get() override;
+    const row& get() const override;
     bool next() override;
     bool different(const sqlcpp::resultset_row_iterator_impl& other) const override;
 
-    virtual value get_value(unsigned int index) const override;
+    size_t size() const override;
 
-    virtual std::string get_value_string(unsigned int index) const override;
-    virtual blob get_value_blob(unsigned int index) const override;
-    virtual bool get_value_bool(unsigned int index) const override;
-    virtual int get_value_int(unsigned int index) const override;
-    virtual int64_t get_value_int64(unsigned int index) const override;
-    virtual double get_value_double(unsigned int index) const override;
+    value get_value(unsigned int index) const override;
+
+    std::string get_value_string(unsigned int index) const override;
+    blob get_value_blob(unsigned int index) const override;
+    bool get_value_bool(unsigned int index) const override;
+    int get_value_int(unsigned int index) const override;
+    int64_t get_value_int64(unsigned int index) const override;
+    double get_value_double(unsigned int index) const override;
 };
 
-sqlcpp::row& resultset_row_iterator_impl::get()
+const row& resultset_row_iterator_impl::get() const
 {
     return *this;
 }
@@ -115,6 +118,10 @@ bool resultset_row_iterator_impl::different(const sqlcpp::resultset_row_iterator
     }
 }
 
+size_t resultset_row_iterator_impl::size() const
+{
+    return sqlite3_column_count(_stmt.get());
+}
 
 value resultset_row_iterator_impl::get_value(unsigned int index) const
 {
@@ -136,8 +143,8 @@ value resultset_row_iterator_impl::get_value(unsigned int index) const
 
 std::string resultset_row_iterator_impl::get_value_string(unsigned int index) const 
 {
-    const char* s = reinterpret_cast<const char*>(sqlite3_column_text(_stmt.get(), index));
-    return std::string(s != nullptr ? s : "");
+        const char* s = reinterpret_cast<const char*>(sqlite3_column_text(_stmt.get(), index));
+        return std::string(s != nullptr ? s : "");
 }
 
 blob resultset_row_iterator_impl::get_value_blob(unsigned int index) const 
@@ -186,7 +193,7 @@ double resultset_row_iterator_impl::get_value_double(unsigned int index) const
 //
 // SQLite's resultset
 //
-class resultset : public sqlcpp::resultset
+class resultset : public sqlcpp::cursor_resultset
 {
 protected:
     std::shared_ptr<sqlite3_stmt> _stmt;
@@ -200,8 +207,10 @@ public:
 
     virtual ~resultset() = default;
 
+    unsigned long long affected_rows() const override;
+    unsigned long long last_insert_id() const override;
+
     unsigned int column_count() const override;
-    unsigned int row_count() const override;
 
     std::string column_name(unsigned int index) const override;
     unsigned int column_index(const std::string& name) const override;
@@ -211,20 +220,43 @@ public:
 
     bool has_row() const override;
 
-    sqlcpp::resultset_row_iterator begin() const override;
-    sqlcpp::resultset_row_iterator end() const override;
+    resultset_row_iterator begin() const override;
+    resultset_row_iterator end() const override;
+
+    static value_type convert_column_type(int column_type);
 };
+
+value_type resultset::convert_column_type(int column_type)
+{
+    switch(column_type) {
+        case SQLITE_NULL:
+            return value_type::NULL_VALUE;
+        case SQLITE_INTEGER:
+            return value_type::INT64;
+        case SQLITE_FLOAT:
+            return value_type::DOUBLE;
+        case SQLITE_TEXT:
+            return value_type::STRING;
+        case SQLITE_BLOB:
+            return value_type::BLOB;
+        default:
+            return value_type::UNSUPPORTED;
+    }
+}
+
+unsigned long long resultset::affected_rows() const {
+    // TODO
+    return 0;
+}
+
+unsigned long long resultset::last_insert_id() const {
+    // TODO
+    return 0;
+}
 
 unsigned int resultset::column_count() const
 {
     return sqlite3_column_count(_stmt.get());
-}
-
-unsigned int resultset::row_count() const
-{
-    // TODO
-    // Is possible ??
-    return 0;
 }
 
 std::string resultset::column_name(unsigned int index) const
@@ -254,20 +286,7 @@ std::string resultset::table_origin_name(unsigned int index) const
 
 value_type resultset::column_type(unsigned int index) const
 {
-    switch(sqlite3_column_type(_stmt.get(), index)) {
-        case SQLITE_NULL:
-            return value_type::NULL_VALUE;
-        case SQLITE_INTEGER:
-            return value_type::INT64;
-        case SQLITE_FLOAT:
-            return value_type::DOUBLE;
-        case SQLITE_TEXT:
-            return value_type::STRING;
-        case SQLITE_BLOB:
-            return value_type::BLOB;
-        default:
-            return value_type::UNSUPPORTED;
-    }
+    return convert_column_type(sqlite3_column_type(_stmt.get(), index));
 }
 
 bool resultset::has_row() const
@@ -277,14 +296,14 @@ bool resultset::has_row() const
 
 sqlcpp::resultset_row_iterator resultset::begin() const
 {
-    return std::move(sqlcpp::resultset::create_iterator(
+    return std::move(sqlcpp::cursor_resultset::create_iterator(
         std::make_unique<resultset_row_iterator_impl>(_stmt, _state)
         ));
 }
 
 sqlcpp::resultset_row_iterator resultset::end() const
 {
-    return std::move(sqlcpp::resultset::create_iterator(std::make_unique<resultset_row_iterator_impl>(_stmt, SQLITE_DONE)));
+    return std::move(sqlcpp::cursor_resultset::create_iterator(std::make_unique<resultset_row_iterator_impl>(_stmt, SQLITE_DONE)));
 }
 
 
@@ -309,7 +328,9 @@ public:
 
     virtual ~statement() {}
 
-    std::shared_ptr<sqlcpp::resultset> execute() override;
+    std::shared_ptr<sqlcpp::cursor_resultset> execute() override;
+    void execute(std::function<void(const row&)> func) override;
+    std::shared_ptr<sqlcpp::buffered_resultset> execute_buffered() override;
 
     unsigned int parameter_count() const override;
     int parameter_index(const std::string& name) const override;
@@ -334,16 +355,133 @@ public:
     statement& bind(unsigned int index, int64_t value) override;
     statement& bind(unsigned int index, double value) override;
     statement& bind(unsigned int index, const value& value) override;
-
 };
 
-std::shared_ptr<sqlcpp::resultset> statement::execute()
+std::shared_ptr<sqlcpp::cursor_resultset> statement::execute()
 {
     int rc = sqlite3_step(_stmt.get());
     switch(rc) {
         case SQLITE_DONE:
         case SQLITE_ROW:
-            return std::shared_ptr<sqlcpp::resultset>{new resultset(_stmt, rc)};
+            return std::shared_ptr<sqlcpp::cursor_resultset>{new resultset(_stmt, rc)};
+        default:
+            // TODO process errors
+            // Throw exception
+            return {};
+    }
+}
+
+void statement::execute(std::function<void(const row&)> func)
+{
+    int rc = sqlite3_step(_stmt.get());
+    switch(rc) {
+        case SQLITE_DONE:
+        case SQLITE_ROW: {
+            std::vector<value_type> columns;
+            for(int index=0; index< sqlite3_column_count(_stmt.get()); ++index) {
+                columns.push_back(resultset::convert_column_type(sqlite3_column_type(_stmt.get(), index)));
+            }
+            size_t col_count = columns.size();
+            while(rc == SQLITE_ROW) {
+                details::generic_row row;
+                for(size_t index=0; index<col_count; ++index) {
+                    switch(sqlite3_column_type(_stmt.get(), index)) {
+                        case SQLITE_NULL:
+                            row.add_value(nullptr);
+                            break;
+                        case SQLITE_INTEGER:
+                            row.add_value(sqlite3_column_int64(_stmt.get(), index));
+                            break;
+                        case SQLITE_FLOAT:
+                            row.add_value(sqlite3_column_double(_stmt.get(), index));
+                            break;
+                        case SQLITE_TEXT: {
+                            const char* s = reinterpret_cast<const char*>(sqlite3_column_text(_stmt.get(), index));
+                            row.add_value(std::string(s != nullptr ? s : ""));
+                            break;
+                        }
+                        case SQLITE_BLOB: {
+                            const void* data = sqlite3_column_blob(_stmt.get(), index);
+                            int size = sqlite3_column_bytes(_stmt.get(), index);
+                            if(data == nullptr || size == 0) {
+                                // TODO throw exception ?
+                                row.add_value(nullptr);
+                            } else {
+                                row.add_value(blob(reinterpret_cast<const unsigned char*>(data), reinterpret_cast<const unsigned char*>(data) + size));
+                            }
+                            break;
+                        }
+                        default:
+                            row.add_value(std::monostate{});
+                            break;
+                    }
+                }
+                func(std::move(row));
+                rc = sqlite3_step(_stmt.get());
+            }
+        }
+        default:
+            // TODO process errors
+            // Throw exception
+            break;
+    }
+}
+
+std::shared_ptr<sqlcpp::buffered_resultset> statement::execute_buffered()
+{
+    int rc = sqlite3_step(_stmt.get());
+    switch(rc) {
+        case SQLITE_DONE:
+        case SQLITE_ROW: {
+            auto buff = std::make_shared<details::generic_buffered_resultset>();
+            //buff->last_insert_id(0);
+            //buff->affected_rows(0);
+            for(int index=0; index< sqlite3_column_count(_stmt.get()); ++index) {
+                buff->add_column(
+                    sqlite3_column_name(_stmt.get(), index),
+                    resultset::convert_column_type(sqlite3_column_type(_stmt.get(), index)),
+                    sqlite3_column_origin_name(_stmt.get(), index),
+                    sqlite3_column_table_name(_stmt.get(), index)
+                    );
+            }
+            size_t col_count = buff->column_count();
+            while(rc == SQLITE_ROW) {
+                details::generic_row row;
+                for(size_t index=0; index<col_count; ++index) {
+                    switch(sqlite3_column_type(_stmt.get(), index)) {
+                        case SQLITE_NULL:
+                            row.add_value(nullptr);
+                            break;
+                        case SQLITE_INTEGER:
+                            row.add_value(sqlite3_column_int64(_stmt.get(), index));
+                            break;
+                        case SQLITE_FLOAT:
+                            row.add_value(sqlite3_column_double(_stmt.get(), index));
+                            break;
+                        case SQLITE_TEXT: {
+                            const char* s = reinterpret_cast<const char*>(sqlite3_column_text(_stmt.get(), index));
+                            row.add_value(std::string(s != nullptr ? s : ""));
+                            break;
+                        }
+                        case SQLITE_BLOB: {
+                            const void* data = sqlite3_column_blob(_stmt.get(), index);
+                            int size = sqlite3_column_bytes(_stmt.get(), index);
+                            if(data == nullptr || size == 0) {
+                                return {};
+                            }
+                            row.add_value(blob(reinterpret_cast<const unsigned char*>(data), reinterpret_cast<const unsigned char*>(data) + size));
+                            break;
+                        }
+                        default:
+                            row.add_value(std::monostate{});
+                            break;
+                    }
+                }
+                buff->add_row(std::move(row));
+                rc = sqlite3_step(_stmt.get());
+            }
+            return buff;
+        }
         default:
             // TODO process errors
             // Throw exception
@@ -565,8 +703,10 @@ std::shared_ptr<connection> connection::create(const std::string& connection_str
     return std::make_shared<connection>(db);
 }
 
-void connection::execute(const std::string& query)
+std::shared_ptr<stats_result> connection::execute(const std::string& query)
 {
+    sqlite3_int64 total_before = sqlite3_total_changes64(_db);
+
     char* err_msg = nullptr;
     int rc = sqlite3_exec(_db, query.c_str(), nullptr, nullptr, &err_msg);
     if (rc != SQLITE_OK) {
@@ -574,19 +714,25 @@ void connection::execute(const std::string& query)
         sqlite3_free(err_msg);
         // TODO throw exception
     }
+
+    sqlite3_int64 last_inserted_id = sqlite3_last_insert_rowid(_db);
+    sqlite3_int64 change_count = sqlite3_changes64(_db);
+    sqlite3_int64 total_after = sqlite3_total_changes64(_db);
+
+    return std::make_shared<details::simple_stats_result>(change_count != 0 ? change_count : (total_after - total_before) , last_inserted_id);
 }
 
 std::shared_ptr<sqlcpp::statement> connection::prepare(const std::string& query)
 {
     int rc;
     sqlite3_stmt* res;
-    rc = rc = sqlite3_prepare_v2(_db, query.c_str(), query.size(), &res, 0);
+    rc = sqlite3_prepare_v2(_db, query.c_str(), query.size(), &res, 0);
     if (rc != SQLITE_OK) {
         std::cerr << "Failed to execute statement (" << rc << "): " << sqlite3_errmsg(_db) << std::endl;
         // TODO throw exception
         return {};
     }
-    return std::make_unique<statement>(res);
+    return std::make_shared<statement>(res);
 }
 
 

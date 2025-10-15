@@ -16,6 +16,7 @@
  */
 
 #include "sqlcpp/postgresql.hpp"
+#include "sqlcpp/details.hpp"
 
 #include <postgresql/16/server/catalog/pg_type_d.h>
 
@@ -23,6 +24,7 @@
 #include <iostream>
 #include <limits>
 #include <sstream>
+
 
 /*
  * Refs:
@@ -33,6 +35,7 @@
  * - https://www.postgresql.org/docs/current/sql-prepare.html
  *
  * Implementation notes:
+ * Postgres' methods PQcmdTuples(...) and PQoidValue(...) are really restrictive, and may return low or underestimated results.
  *
  * TODO:
  * - Implement generic bind by name
@@ -51,10 +54,12 @@ class helpers
 {
     helpers() = delete;
 public:
-    static blob parseBlob(const std::string_view& str);
+    static blob parse_blob(const std::string_view& str);
+    static value_type column_type_from_oid(Oid oid);
+    static value get_value(PGresult* res, unsigned int row, unsigned int col);
 };
 
-blob helpers::parseBlob(const std::string_view& str) {
+blob helpers::parse_blob(const std::string_view& str) {
     if(str.size()>=2 && str[0] == '\\' && str[1] == 'x') {
         // Hex format
         blob res;
@@ -113,85 +118,44 @@ blob helpers::parseBlob(const std::string_view& str) {
 }
 
 
-
-//
-// PostgreSQL's resultset iterator
-//
-
-class resultset_row_iterator_impl : public sqlcpp::resultset_row_iterator_impl, protected row
+value_type helpers::column_type_from_oid(Oid oid)
 {
-protected:
-    std::shared_ptr<PGresult> _stmt;
-    size_t _row = 0;
-
-public:
-    resultset_row_iterator_impl(std::shared_ptr<PGresult> stmt):
-        _stmt(stmt),
-        _row(0)
-    {}
-
-    virtual ~resultset_row_iterator_impl() = default;
-
-    bool ok() const;
-    operator bool() const { return ok(); }
-
-    sqlcpp::row& get() override;
-    bool next() override;
-    bool different(const sqlcpp::resultset_row_iterator_impl& other) const override;
-
-    virtual value get_value(unsigned int index) const override;
-
-    virtual std::string get_value_string(unsigned int index) const override;
-    virtual blob get_value_blob(unsigned int index) const override;
-    virtual bool get_value_bool(unsigned int index) const override;
-    virtual int get_value_int(unsigned int index) const override;
-    virtual int64_t get_value_int64(unsigned int index) const override;
-    virtual double get_value_double(unsigned int index) const override;
-};
-
-sqlcpp::row& resultset_row_iterator_impl::get()
-{
-    return *this;
-}
-
-bool resultset_row_iterator_impl::next()
-{
-    return _stmt
-        && ++_row < PQntuples(_stmt.get());
-}
-
-bool resultset_row_iterator_impl::ok() const
-{
-    return _stmt && _row < PQntuples(_stmt.get());
-}
-
-bool resultset_row_iterator_impl::different(const sqlcpp::resultset_row_iterator_impl& other) const
-{
-    if(auto impl = dynamic_cast<const resultset_row_iterator_impl*>(&other) ; impl!=nullptr) {
-        if(!ok() && !impl->ok()) {
-            // Both invalid, consider they are the same
-            return false;
-        } else {
-            // Both valid, compare stmt and row
-            return _stmt != impl->_stmt || _row != impl->_row;
-        }
-    } else {
-        // Not the same type, obviously different
-        return true;
+    switch(oid) {
+        case BOOLOID:
+            return value_type::BOOL;
+        case INT2OID:
+        case INT4OID:
+            return value_type::INT;
+        case INT8OID:
+            return value_type::INT64;
+        case FLOAT4OID:
+        case FLOAT8OID:
+            return value_type::DOUBLE;
+        case TEXTOID:
+        case VARCHAROID:
+        case BPCHAROID:
+        case NAMEOID:
+        case CHAROID:
+            return value_type::STRING;
+        case BYTEAOID:
+            return value_type::BLOB;
+        default:
+            return value_type::UNSUPPORTED;
     }
 }
 
-value resultset_row_iterator_impl::get_value(unsigned int index) const {
-    if (PQgetisnull(_stmt.get(), _row, index)) {
+
+value helpers::get_value(PGresult* res, unsigned int row, unsigned int col) {
+    if (PQgetisnull(res, row, col)) {
         return {nullptr};
     }
 
-    bool isBinary = PQfformat(_stmt.get(), index) != 0;
-    int size = PQgetlength(_stmt.get(), _row, index);
-    const char *val = PQgetvalue(_stmt.get(), _row, index);
+    bool isBinary = PQfformat(res, col) != 0;
+    int size = PQgetlength(res, row, col);
+    const char *val = PQgetvalue(res, row, col);
 
     if (isBinary) {
-        switch(PQftype(_stmt.get(), index)) {
+        switch(PQftype(res, col)) {
             case BOOLOID:
                 // TODO EKI !!! What are the values ?
                 return value_type::BOOL;
@@ -238,7 +202,7 @@ value resultset_row_iterator_impl::get_value(unsigned int index) const {
                 return {};
         }
     } else {
-        switch(PQftype(_stmt.get(), index)) {
+        switch(PQftype(res, col)) {
             case BOOLOID:
                 // TODO EKI !!! What are the values ?
                 return *val == 't';
@@ -257,12 +221,92 @@ value resultset_row_iterator_impl::get_value(unsigned int index) const {
             case CHAROID:
                 return std::string(val, val+size);
             case BYTEAOID:
-                return helpers::parseBlob(std::string_view(val, size));
+                return helpers::parse_blob(std::string_view(val, size));
             default:
                 return {};
         }
     }
 
+}
+
+
+
+
+//
+// PostgreSQL's resultset iterator
+//
+
+class resultset_row_iterator_impl : public sqlcpp::resultset_row_iterator_impl, protected row
+{
+protected:
+    std::shared_ptr<PGresult> _stmt;
+    size_t _row = 0;
+
+public:
+    resultset_row_iterator_impl(std::shared_ptr<PGresult> stmt):
+        _stmt(stmt)
+    {}
+
+    virtual ~resultset_row_iterator_impl() = default;
+
+    bool ok() const;
+    operator bool() const { return ok(); }
+
+    const row& get() const override;
+    bool next() override;
+    bool different(const sqlcpp::resultset_row_iterator_impl& other) const override;
+
+    size_t size() const override;
+
+    value get_value(unsigned int index) const override;
+
+    std::string get_value_string(unsigned int index) const override;
+    blob get_value_blob(unsigned int index) const override;
+    bool get_value_bool(unsigned int index) const override;
+    int get_value_int(unsigned int index) const override;
+    int64_t get_value_int64(unsigned int index) const override;
+    double get_value_double(unsigned int index) const override;
+};
+
+const row& resultset_row_iterator_impl::get() const
+{
+    return *this;
+}
+
+bool resultset_row_iterator_impl::next()
+{
+    return _stmt && ++_row < PQntuples(_stmt.get());
+}
+
+bool resultset_row_iterator_impl::ok() const
+{
+    return _stmt && _row < PQntuples(_stmt.get());
+}
+
+bool resultset_row_iterator_impl::different(const sqlcpp::resultset_row_iterator_impl& other) const
+{
+    if(auto impl = dynamic_cast<const resultset_row_iterator_impl*>(&other) ; impl!=nullptr) {
+        if(!ok() && !impl->ok()) {
+            // Both invalid, consider they are the same
+            return false;
+        } else {
+            // Both valid, compare stmt and row
+            return _stmt != impl->_stmt || _row != impl->_row;
+        }
+    } else {
+        // Not the same type, obviously different
+        return true;
+    }
+}
+
+size_t resultset_row_iterator_impl::size() const
+{
+    return PQnfields(_stmt.get());
+}
+
+value resultset_row_iterator_impl::get_value(unsigned int index) const
+{
+    return helpers::get_value(_stmt.get(), _row, index);
 }
 
 std::string resultset_row_iterator_impl::get_value_string(unsigned int index) const 
@@ -297,7 +341,7 @@ blob resultset_row_iterator_impl::get_value_blob(unsigned int index) const
         // TODO To be tested ???
         return {val, val+size};
     } else {
-        return helpers::parseBlob(std::string_view(val, size));
+        return helpers::parse_blob(std::string_view(val, size));
     }
 }
 
@@ -396,7 +440,7 @@ double resultset_row_iterator_impl::get_value_double(unsigned int index) const
 //
 // PostgreSQL's resultset
 //
-class resultset : public sqlcpp::resultset
+class resultset : public sqlcpp::cursor_resultset
 {
 protected:
     std::shared_ptr<PGresult> _res;
@@ -408,8 +452,11 @@ public:
 
     virtual ~resultset() = default;
 
+    unsigned long long affected_rows() const override;
+    unsigned long long last_insert_id() const override;
+
     unsigned int column_count() const override;
-    unsigned int row_count() const override;
+    unsigned int row_count() const /*override*/;
 
     std::string column_name(unsigned int index) const override;
     unsigned int column_index(const std::string& name) const override;
@@ -419,11 +466,19 @@ public:
 
     bool has_row() const override;
 
-
-
     sqlcpp::resultset_row_iterator begin() const override;
     sqlcpp::resultset_row_iterator end() const override;
+
 };
+
+unsigned long long resultset::affected_rows() const {
+    std::string str = PQcmdTuples(_res.get());
+    return str.empty() ? 0 : std::stoull(str);
+}
+
+unsigned long long resultset::last_insert_id() const {
+    return PQoidValue(_res.get());
+}
 
 unsigned int resultset::column_count() const
 {
@@ -468,30 +523,7 @@ std::string resultset::table_origin_name(unsigned int index) const
 
 value_type resultset::column_type(unsigned int index) const
 {
-    Oid type_oid = PQftype(_res.get(), index);
-    switch(type_oid) {
-        case BOOLOID:
-            return value_type::BOOL;
-        case INT2OID:
-        case INT4OID:
-            return value_type::INT;
-        case INT8OID:
-            return value_type::INT64;
-        case FLOAT4OID:
-        case FLOAT8OID:
-            return value_type::DOUBLE;
-        case TEXTOID:
-        case VARCHAROID:
-        case BPCHAROID:
-        case NAMEOID:
-        case CHAROID:
-            return value_type::STRING;
-        case BYTEAOID:
-            return value_type::BLOB;
-        default:
-            return value_type::UNSUPPORTED;
-    }
-
+    return helpers::column_type_from_oid(PQftype(_res.get(), index));
 }
 
 bool resultset::has_row() const
@@ -507,12 +539,12 @@ bool resultset::has_row() const
 
 sqlcpp::resultset_row_iterator resultset::begin() const
 {
-    return std::move(sqlcpp::resultset::create_iterator(std::make_unique<resultset_row_iterator_impl>(_res)));
+    return std::move(sqlcpp::cursor_resultset::create_iterator(std::make_unique<resultset_row_iterator_impl>(_res)));
 }
 
 sqlcpp::resultset_row_iterator resultset::end() const
 {
-    return std::move(sqlcpp::resultset::create_iterator(std::make_unique<resultset_row_iterator_impl>(nullptr)));
+    return std::move(sqlcpp::cursor_resultset::create_iterator(std::make_unique<resultset_row_iterator_impl>(nullptr)));
 }
 
 
@@ -529,6 +561,8 @@ protected:
     mutable std::shared_ptr<PGresult> _stmt_info;
     std::vector<value> _params;
 
+    PGresult* execute_prepared();
+
 public:
     explicit statement(std::shared_ptr<PGconn> db, const std::string& stmt_name) :
         _db(db), _stmt_name(stmt_name)
@@ -536,7 +570,9 @@ public:
 
     virtual ~statement() {}
 
-    std::shared_ptr<sqlcpp::resultset> execute() override;
+    std::shared_ptr<sqlcpp::cursor_resultset> execute() override;
+    void execute(std::function<void(const row&)> func) override;
+    std::shared_ptr<sqlcpp::buffered_resultset> execute_buffered() override;
 
     unsigned int parameter_count() const override;
     int parameter_index(const std::string& name) const override;
@@ -561,21 +597,9 @@ public:
     statement& bind(unsigned int index, int64_t value) override;
     statement& bind(unsigned int index, double value) override;
     statement& bind(unsigned int index, const value& value) override;
-
 };
 
-static inline std::string to_hex_string(const blob& data) {
-    static const char hex_digits[] = "0123456789abcdef";
-    std::string hex_str;
-    hex_str.reserve(data.size() * 2);
-    for (unsigned char byte : data) {
-        hex_str.push_back(hex_digits[byte >> 4]);
-        hex_str.push_back(hex_digits[byte & 0x0F]);
-    }
-    return hex_str;
-}
-
-std::shared_ptr<sqlcpp::resultset> statement::execute()
+PGresult* statement::execute_prepared()
 {
     size_t sz = _params.size();
 
@@ -598,7 +622,7 @@ std::shared_ptr<sqlcpp::resultset> statement::execute()
                 values.push_back(arg);
                 rc.push_back(values.back().c_str());
             } else if constexpr(std::is_same_v<T, blob>) {
-                values.push_back("\\x" + to_hex_string(arg));
+                values.push_back("\\x" + details::blob_to_hex_string(arg));
                 rc.push_back(values.back().c_str());
             } else if constexpr(std::is_same_v<T, bool>) {
                 values.push_back(arg ? "TRUE" : "FALSE");
@@ -610,7 +634,12 @@ std::shared_ptr<sqlcpp::resultset> statement::execute()
         }, v);
     }
 
-    PGresult *res = PQexecPrepared(_db.lock().get(), _stmt_name.c_str(), rc.size(), rc.data(), nullptr, nullptr, 0);
+    return PQexecPrepared(_db.lock().get(), _stmt_name.c_str(), rc.size(), rc.data(), nullptr, nullptr, 0);
+}
+
+std::shared_ptr<sqlcpp::cursor_resultset> statement::execute()
+{
+    PGresult *res = execute_prepared();
     // TODO support binary format for slight better performances
     switch(PQresultStatus(res)) {
         case PGRES_COMMAND_OK:
@@ -622,6 +651,75 @@ std::shared_ptr<sqlcpp::resultset> statement::execute()
             // TODO throw exception
             return {};
     }
+}
+
+void statement::execute(std::function<void(const row&)> func)
+{
+    PGresult *res = execute_prepared();
+    // TODO support binary format for slight better performances
+    switch(PQresultStatus(res)) {
+        case PGRES_COMMAND_OK:
+        case PGRES_TUPLES_OK: {
+            int col_count = PQnfields(res);
+            int row_count = PQntuples(res);
+            for (int row_index = 0; row_index < row_count; ++row_index) {
+                details::generic_row row;
+                for (int col_index = 0; col_index < col_count; ++col_index) {
+                    row.add_value(helpers::get_value(res, row_index, col_index));
+                }
+                func(row);
+            }
+            PQclear(res);
+            break;
+        }
+        default:
+            std::cerr << "Failed to execute statement: " << PQerrorMessage(_db.lock().get()) << std::endl;
+            // TODO throw exception
+            PQclear(res);
+    }
+}
+
+std::shared_ptr<sqlcpp::buffered_resultset> statement::execute_buffered()
+{
+    PGresult *res = execute_prepared();
+    // TODO support binary format for slight better performances
+    switch(PQresultStatus(res)) {
+        case PGRES_COMMAND_OK:
+        case PGRES_TUPLES_OK: {
+            auto buff = std::make_shared<details::generic_buffered_resultset>();
+
+            std::string affected_rows_str = PQcmdTuples(res);
+            unsigned long long affected_rows = affected_rows_str.empty() ? 0 : std::stoull(affected_rows_str);
+            unsigned long long last_insert_id = PQoidValue(res);
+
+            int col_count = PQnfields(res);
+            for (int index = 0; index < col_count; ++index) {
+                std::string col_name = PQfname(res, index);
+                value_type col_type = helpers::column_type_from_oid(PQftype(res, index));
+                std::string column_origin_name; // TODO not supported directly by PGSQL
+                std::string table_origin_name; // TODO not supported directly by PGSQL
+                buff->add_column(col_name, col_type, column_origin_name, table_origin_name);
+            }
+
+            int row_count = PQntuples(res);
+            for (int row_index = 0; row_index < row_count; ++row_index) {
+                details::generic_row row;
+                for (int col_index = 0; col_index < col_count; ++col_index) {
+                    row.add_value(helpers::get_value(res, row_index, col_index));
+                }
+                buff->add_row(std::move(row));
+            }
+            PQclear(res);
+            return buff;
+        }
+        default:
+            std::cerr << "Failed to execute statement: " << PQerrorMessage(_db.lock().get()) << std::endl;
+            PQclear(res);
+            // TODO throw exception
+            return {};
+    }
+
+    return {};
 }
 
 unsigned int statement::parameter_count() const
@@ -814,21 +912,25 @@ std::shared_ptr<connection> connection::create(const std::string& connection_str
     return std::make_shared<connection>(db);
 }
 
-void connection::execute(const std::string& query)
+std::shared_ptr<stats_result> connection::execute(const std::string& query)
 {
     char* err_msg = nullptr;
 
     PGresult* res = PQexec(_db.get(), query.c_str());
     switch(PQresultStatus(res)) {
         case PGRES_COMMAND_OK:
-        case PGRES_TUPLES_OK:
+        case PGRES_TUPLES_OK: {
+            std::string str = PQcmdTuples(res);
+            unsigned long long affected_rows = !str.empty() ? std::stoull(str) : 0;
+            Oid last_inserted = PQoidValue(res);
             PQclear(res);
-            return;
+            return std::make_shared<details::simple_stats_result>(affected_rows, last_inserted);
+        }
         default:
             std::cerr << "Failed to execute statement: " << PQerrorMessage(_db.get()) << std::endl;
             PQclear(res);
             // TODO throw exception
-            return;
+            return nullptr;
     }
 }
 

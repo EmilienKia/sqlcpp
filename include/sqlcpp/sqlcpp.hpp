@@ -19,18 +19,24 @@
 #define SQLCPP_HPP
 
 
+#include <functional>
 #include <memory>
 #include <iterator>
+#include <optional>
 #include <vector>
 #include <variant>
 #include <string>
 #include <string_view>
 
+#include "sqlcpp.hpp"
+
 namespace sqlcpp
 {
 
 class statement;
-class resultset;
+class stats_result;
+class cursor_resultset;
+class buffered_resultset;
 class resultset_row_iterator;
 class resultset_row_iterator_impl;
 class row;
@@ -42,13 +48,11 @@ protected:
 
 public:
     virtual ~connection() = default;
-
     static std::shared_ptr<connection> create(const std::string& connection_string);
-
-    virtual void execute(const std::string& query) = 0;
-
+    virtual std::shared_ptr<stats_result> execute(const std::string& query) = 0;
     virtual std::shared_ptr<statement> prepare(const std::string& query) = 0;
 };
+
 
 
 enum value_type {
@@ -66,6 +70,36 @@ enum value_type {
 typedef std::vector<unsigned char> blob;
 typedef std::variant<std::monostate, std::nullptr_t, std::string, blob, bool, int, int64_t, double> value;
 
+inline bool is_null(const value& v) {
+    return std::holds_alternative<std::nullptr_t>(v);
+}
+
+template<typename T>
+bool is(const value& val) {
+    return std::holds_alternative<T>(val);
+}
+
+std::string to_string(const value& val);
+blob to_blob(const value& val);
+bool to_bool(const value& val);
+int to_int(const value& val);
+int64_t to_int64(const value& val);
+double to_double(const value& val);
+
+std::optional<std::string> to_string_opt(const value& val);
+std::optional<blob> to_blob_opt(const value& val);
+std::optional<bool> to_bool_opt(const value& val);
+std::optional<int> to_int_opt(const value& val);
+std::optional<int64_t> to_int64_opt(const value& val);
+std::optional<double> to_double_opt(const value& val);
+
+
+template<typename T>
+T as(const value& val);
+
+
+
+
 
 class statement
 {
@@ -75,7 +109,9 @@ protected:
 public:
     virtual ~statement() = default;
 
-    virtual std::shared_ptr<resultset> execute() = 0;
+    virtual std::shared_ptr<cursor_resultset> execute() = 0;
+    virtual void execute(std::function<void(const row&)> func) = 0;
+    virtual std::shared_ptr<buffered_resultset> execute_buffered() = 0;
 
     virtual unsigned int parameter_count() const = 0;
     virtual int parameter_index(const std::string& name) const = 0;
@@ -111,7 +147,11 @@ protected:
 public:
     virtual ~row() = default;
 
+    virtual size_t size() const = 0;
+
     virtual value get_value(unsigned int index) const = 0;
+
+    value operator[](unsigned int index)const { return get_value(index); }
 
     virtual std::string get_value_string(unsigned int index) const = 0;
     virtual blob get_value_blob(unsigned int index) const = 0;
@@ -120,6 +160,7 @@ public:
     virtual int64_t get_value_int64(unsigned int index) const = 0;
     virtual double get_value_double(unsigned int index) const = 0;
 
+    virtual std::vector<value> get_values() const;
 };
 
 class resultset_row_iterator_impl
@@ -129,7 +170,7 @@ protected:
 public:
     virtual ~resultset_row_iterator_impl() = default;
 
-    virtual row& get() =0;
+    virtual const row& get() const =0;
     virtual bool next() = 0;
     virtual bool different(const resultset_row_iterator_impl& other) const = 0;
 };
@@ -139,10 +180,9 @@ class resultset_row_iterator : public std::input_iterator_tag
 protected:
     std::shared_ptr<resultset_row_iterator_impl> _impl;
 
-    friend class resultset;
+public:
     resultset_row_iterator(std::shared_ptr<resultset_row_iterator_impl>&& impl) : _impl(std::move(impl)) {}
 
-public:
     using value_type = row;
 
     resultset_row_iterator() = default;
@@ -157,26 +197,34 @@ public:
     resultset_row_iterator& operator++();
     void operator++(int);
     bool operator!=(const resultset_row_iterator& other) const;
-    row& operator*();
-    row& operator->();
+    const row& operator*() const;
+    const row& operator->() const;
 };
 
-class resultset
+class stats_result
+{
+public:
+    virtual ~stats_result() = default;
+
+    virtual unsigned long long affected_rows() const =0;
+    virtual unsigned long long last_insert_id() const =0;
+};
+
+class cursor_resultset : public stats_result
 {
 protected:
-    resultset() = default;
+    cursor_resultset() = default;
 
-    inline static resultset_row_iterator create_iterator(std::shared_ptr<resultset_row_iterator_impl>&& impl) {
+    static resultset_row_iterator create_iterator(std::shared_ptr<resultset_row_iterator_impl>&& impl) {
         return {std::move(impl)};
     }
 
 public:
     typedef resultset_row_iterator iterator;
 
-    virtual ~resultset() = default;
+    virtual ~cursor_resultset() = default;
 
     virtual unsigned int column_count() const = 0;
-    virtual unsigned int row_count() const = 0;
 
     virtual std::string column_name(unsigned int index) const = 0;
     virtual unsigned int column_index(const std::string& name) const = 0;
@@ -185,13 +233,90 @@ public:
     virtual value_type column_type(unsigned int index) const = 0;
 
     virtual bool has_row() const = 0;
-    inline operator bool() const { return has_row();}
+    operator bool() const { return has_row();}
 
     virtual iterator begin() const =0;
     virtual iterator end() const =0;
 
 };
 
+class buffered_resultset : public cursor_resultset
+{
+protected:
+    buffered_resultset() = default;
+
+public:
+    virtual unsigned int row_count() const = 0;
+
+    virtual const row& get_row(unsigned long long index) const = 0;
+};
+
+
+
+
+
+//
+// Late template implementations
+//
+template<>
+inline std::string as(const value& val) {
+    return to_string(val);
+}
+
+template<>
+inline blob as(const value& val) {
+    return to_blob(val);
+}
+
+template<>
+inline bool as(const value& val) {
+    return to_bool(val);
+}
+
+template<>
+inline int as(const value& val) {
+    return to_int(val);
+}
+
+template<>
+inline int64_t as(const value& val) {
+    return to_int64(val);
+}
+
+template<>
+inline double as(const value& val) {
+    return to_double(val);
+}
+
+template<>
+inline std::optional<std::string> as(const value& val) {
+    return to_string_opt(val);
+}
+
+template<>
+inline std::optional<blob> as(const value& val) {
+    return to_blob_opt(val);
+}
+
+template<>
+inline std::optional<bool> as(const value& val) {
+    return to_bool_opt(val);
+}
+
+template<>
+inline std::optional<int> as(const value& val) {
+    return to_int_opt(val);
+}
+
+template<>
+inline std::optional<int64_t> as(const value& val) {
+    return to_int64_opt(val);
+}
+
+template<>
+inline std::optional<double> as(const value& val) {
+    return to_double_opt(val);
+}
 
 
 

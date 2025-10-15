@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.16)
 cmake_policy(VERSION 3.16)
 
-project(sqlcpp VERSION 0.1.0 LANGUAGES CXX)
+project(sqlcpp VERSION 0.1.0 LANGUAGES CXX C)
 
 # Set C++17 standard
 set(CMAKE_CXX_STANDARD 17)
