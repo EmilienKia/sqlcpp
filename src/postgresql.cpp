@@ -236,7 +236,7 @@ value helpers::get_value(PGresult* res, unsigned int row, unsigned int col) {
 // PostgreSQL's resultset iterator
 //
 
-class resultset_row_iterator_impl : public sqlcpp::resultset_row_iterator_impl, protected row
+class resultset_row_iterator_impl : public sqlcpp::resultset_row_iterator_impl, protected row_base
 {
 protected:
     std::shared_ptr<PGresult> _stmt;
@@ -252,7 +252,7 @@ public:
     bool ok() const;
     operator bool() const { return ok(); }
 
-    const row& get() const override;
+    const row_base& get() const override;
     bool next() override;
     bool different(const sqlcpp::resultset_row_iterator_impl& other) const override;
 
@@ -268,7 +268,7 @@ public:
     double get_value_double(unsigned int index) const override;
 };
 
-const row& resultset_row_iterator_impl::get() const
+const row_base& resultset_row_iterator_impl::get() const
 {
     return *this;
 }
@@ -571,7 +571,7 @@ public:
     virtual ~statement() {}
 
     std::shared_ptr<sqlcpp::cursor_resultset> execute() override;
-    void execute(std::function<void(const row&)> func) override;
+    void execute(std::function<void(const row_base&)> func) override;
     std::shared_ptr<sqlcpp::buffered_resultset> execute_buffered() override;
 
     unsigned int parameter_count() const override;
@@ -653,7 +653,7 @@ std::shared_ptr<sqlcpp::cursor_resultset> statement::execute()
     }
 }
 
-void statement::execute(std::function<void(const row&)> func)
+void statement::execute(std::function<void(const row_base&)> func)
 {
     PGresult *res = execute_prepared();
     // TODO support binary format for slight better performances
@@ -903,6 +903,7 @@ connection::~connection()
 
 std::shared_ptr<connection> connection::create(const std::string& connection_string)
 {
+std::cout << "Creating postgresql connection to " << connection_string << std::endl;
     PGconn* db = PQconnectdb(connection_string.c_str());
     if(ConnStatusType status = PQstatus(db); status!=CONNECTION_OK) {
         PQfinish(db);
@@ -952,5 +953,45 @@ std::shared_ptr<sqlcpp::statement> connection::prepare(const std::string& query)
             return {};
     }
 }
+
+
+//
+// Postgresql connection factory
+//
+
+class postgresql_connection_factory : public details::connection_factory
+{
+public:
+    postgresql_connection_factory() = default;
+    ~postgresql_connection_factory() override = default;
+
+    std::vector<std::string> supported_schemes() const override;
+    std::shared_ptr<sqlcpp::connection> do_create_connection(const std::string_view& url) override;
+};
+
+std::vector<std::string> postgresql_connection_factory::supported_schemes() const
+{
+    return {"pg", "pgsql", "postgre", "postgres", "postgresql"};
+}
+
+std::shared_ptr<sqlcpp::connection> postgresql_connection_factory::do_create_connection(const std::string_view& url)
+{
+    return connection::create(std::string("postgresql:") + url.data());
+}
+
+
+
+__attribute__((constructor))
+void register_connection_factory() {
+    static std::shared_ptr<postgresql_connection_factory> _factory;
+    _factory = std::make_shared<postgresql_connection_factory>();
+    details::connection_factory_registry::get().register_factory(_factory);
+    if (!_factory) {
+        _factory = std::make_shared<postgresql_connection_factory>();
+        details::connection_factory_registry::get().register_factory(_factory);
+    }
+}
+
+
 
 } // namespace sqlcpp::postgresql

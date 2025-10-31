@@ -45,6 +45,7 @@ namespace sqlcpp::postgresql
         std::shared_ptr<sqlcpp::statement> prepare(const std::string& query) override;
     };
 
+    void register_connection_factory();
 
 } // namespace sqlcpp::postgresql
 #endif // SQLCPP_POSTGRESQL_HPP

@@ -60,7 +60,7 @@ class resultset;
 // SQLite's resultset iterator
 //
 
-class resultset_row_iterator_impl : public sqlcpp::resultset_row_iterator_impl, protected row
+class resultset_row_iterator_impl : public sqlcpp::resultset_row_iterator_impl, protected row_base
 {
 protected:
     std::shared_ptr<sqlite3_stmt> _stmt;
@@ -74,7 +74,7 @@ public:
 
     virtual ~resultset_row_iterator_impl() = default;
 
-    const row& get() const override;
+    const row_base& get() const override;
     bool next() override;
     bool different(const sqlcpp::resultset_row_iterator_impl& other) const override;
 
@@ -90,7 +90,7 @@ public:
     double get_value_double(unsigned int index) const override;
 };
 
-const row& resultset_row_iterator_impl::get() const
+const row_base& resultset_row_iterator_impl::get() const
 {
     return *this;
 }
@@ -329,7 +329,7 @@ public:
     virtual ~statement() {}
 
     std::shared_ptr<sqlcpp::cursor_resultset> execute() override;
-    void execute(std::function<void(const row&)> func) override;
+    void execute(std::function<void(const row_base&)> func) override;
     std::shared_ptr<sqlcpp::buffered_resultset> execute_buffered() override;
 
     unsigned int parameter_count() const override;
@@ -371,7 +371,7 @@ std::shared_ptr<sqlcpp::cursor_resultset> statement::execute()
     }
 }
 
-void statement::execute(std::function<void(const row&)> func)
+void statement::execute(std::function<void(const row_base&)> func)
 {
     int rc = sqlite3_step(_stmt.get());
     switch(rc) {
@@ -735,6 +735,42 @@ std::shared_ptr<sqlcpp::statement> connection::prepare(const std::string& query)
     return std::make_shared<statement>(res);
 }
 
+//
+// SQLite connection factory
+//
+
+class sqlite_connection_factory : public details::connection_factory
+{
+public:
+    sqlite_connection_factory() = default;
+    ~sqlite_connection_factory() override = default;
+
+    std::vector<std::string> supported_schemes() const override;
+    std::shared_ptr<sqlcpp::connection> do_create_connection(const std::string_view& url) override;
+};
+
+std::vector<std::string> sqlite_connection_factory::supported_schemes() const
+{
+    return {"sqlite"};
+}
+
+std::shared_ptr<sqlcpp::connection> sqlite_connection_factory::do_create_connection(const std::string_view& url)
+{
+    return connection::create(url.data());
+}
+
+
+
+__attribute__((constructor))
+void register_connection_factory() {
+    static std::shared_ptr<sqlite_connection_factory> _factory;
+    _factory = std::make_shared<sqlite_connection_factory>();
+    details::connection_factory_registry::get().register_factory(_factory);
+    if (!_factory) {
+        _factory = std::make_shared<sqlite_connection_factory>();
+        details::connection_factory_registry::get().register_factory(_factory);
+    }
+}
 
 
 } // namespace sqlcpp::sqlite

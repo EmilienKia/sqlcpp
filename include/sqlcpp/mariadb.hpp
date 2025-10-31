@@ -46,7 +46,9 @@ public:
 
     std::shared_ptr<sqlcpp::statement> prepare(const std::string& sql) override;
     std::shared_ptr<stats_result> execute(const std::string& sql) override;
+
 };
 
+void register_connection_factory();
 
 } // namespace sqlcpp::mariadb

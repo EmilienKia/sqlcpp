@@ -18,6 +18,9 @@
 #ifndef SQLCPP_DETAILS_HPP
 #define SQLCPP_DETAILS_HPP
 
+#include <filesystem>
+#include <map>
+
 #include "sqlcpp.hpp"
 
 namespace sqlcpp::details {
@@ -41,7 +44,7 @@ public:
 };
 
 
-class generic_row : public row
+class generic_row : public row_base
 {
 protected:
     std::vector<value> _values;
@@ -55,7 +58,7 @@ public:
     generic_row& operator=(const generic_row&) = default;
     generic_row& operator=(generic_row&&) = default;
 
-    explicit generic_row(const row&);
+    explicit generic_row(const row_base&);
     explicit generic_row(const std::vector<value>&);
 
     size_t size() const override { return _values.size(); }
@@ -156,7 +159,7 @@ public:
         return !_rows.empty();
     }
 
-    const row& get_row(unsigned long long index) const override {
+    const row_base& get_row(unsigned long long index) const override {
         return _rows.at(index);
     }
 
@@ -178,12 +181,41 @@ public:
     generic_buffered_resultset_row_iterator_impl(std::vector<generic_row>::const_iterator iter, std::vector<generic_row>::const_iterator end) : _iter(iter), _end(end) {}
     ~generic_buffered_resultset_row_iterator_impl() override = default;
 
-    const row& get() const override;
+    const row_base& get() const override;
     bool next() override;
     bool different(const resultset_row_iterator_impl &other) const override;
 };
 
 
+class connection_factory
+{
+protected:
+    connection_factory() = default;
+
+public:
+    virtual ~connection_factory() = default;
+
+    virtual std::vector<std::string> supported_schemes() const = 0;
+    virtual std::shared_ptr<connection> do_create_connection(const std::string_view& url) = 0;
+};
+
+class connection_factory_registry {
+protected:
+    static connection_factory_registry _instance;
+
+    std::map<std::string, std::shared_ptr<connection_factory>> _factories;
+    std::shared_ptr<connection_factory> get_factory(const std::string& scheme);
+
+    std::shared_ptr<connection_factory> lookup_for_factory(const std::string& scheme);
+    std::shared_ptr<connection_factory> lookup_for_factory(const std::string& scheme, const std::filesystem::path& driver_dir_path);
+    void load_factory_library(const std::filesystem::path& lib_path);
+
+public:
+    static connection_factory_registry& get();
+
+    void register_factory(std::shared_ptr<connection_factory> factory);
+    std::shared_ptr<connection> create_connection(const std::string_view& url);
+};
 
 }
 #endif //SQLCPP_DETAILS_HPP

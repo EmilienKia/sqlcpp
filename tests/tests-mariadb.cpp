@@ -73,50 +73,50 @@ TEST_CASE("Simple MariaDB", "[mariadb]")
         auto it = rset->begin();
 
         {
-            auto& raw = *it;
-            REQUIRE( std::holds_alternative<int>(raw.get_value(0)) );
-            REQUIRE( std::holds_alternative<int64_t>(raw.get_value(1)) );
-            REQUIRE( std::holds_alternative<double>(raw.get_value(2)) );
-            REQUIRE( std::holds_alternative<std::string>(raw.get_value(3)) );
-            REQUIRE( std::holds_alternative<sqlcpp::blob>(raw.get_value(4)) );
-            REQUIRE( std::holds_alternative<bool>(raw.get_value(5)) );
+            auto& row = *it;
+            REQUIRE( std::holds_alternative<int>(row.get_value(0)) );
+            REQUIRE( std::holds_alternative<int64_t>(row.get_value(1)) );
+            REQUIRE( std::holds_alternative<double>(row.get_value(2)) );
+            REQUIRE( std::holds_alternative<std::string>(row.get_value(3)) );
+            REQUIRE( std::holds_alternative<sqlcpp::blob>(row.get_value(4)) );
+            REQUIRE( std::holds_alternative<bool>(row.get_value(5)) );
 
-            REQUIRE( std::get<int>(raw.get_value(0)) == 1 );
-            REQUIRE( std::get<int64_t>(raw.get_value(1)) == 1 );
-            REQUIRE( std::get<double>(raw.get_value(2)) == 2.0 );
-            REQUIRE( std::get<std::string>(raw.get_value(3)) == "Hello" );
-            REQUIRE( std::get<sqlcpp::blob>(raw.get_value(4)) == sqlcpp::blob{0x01, 0x02, 0x03, 0x04, 0x61, 0x62, 0x63, 0x64} );
-            REQUIRE( std::get<bool>(raw.get_value(5)) == true );
+            REQUIRE( std::get<int>(row.get_value(0)) == 1 );
+            REQUIRE( std::get<int64_t>(row.get_value(1)) == 1 );
+            REQUIRE( std::get<double>(row.get_value(2)) == 2.0 );
+            REQUIRE( std::get<std::string>(row.get_value(3)) == "Hello" );
+            REQUIRE( std::get<sqlcpp::blob>(row.get_value(4)) == sqlcpp::blob{0x01, 0x02, 0x03, 0x04, 0x61, 0x62, 0x63, 0x64} );
+            REQUIRE( std::get<bool>(row.get_value(5)) == true );
 
-            REQUIRE( raw.get_value_int(0) == 1 );
-            REQUIRE( raw.get_value_int64(1) == 1 );
-            REQUIRE( raw.get_value_double(2) == 2.0 );
-            REQUIRE( raw.get_value_string(3) == "Hello" );
-            REQUIRE( raw.get_value_blob(4) == sqlcpp::blob{0x01, 0x02, 0x03, 0x04, 0x61, 0x62, 0x63, 0x64} );
-            REQUIRE( raw.get_value_bool(5) == true );
+            REQUIRE( row.get_value_int(0) == 1 );
+            REQUIRE( row.get_value_int64(1) == 1 );
+            REQUIRE( row.get_value_double(2) == 2.0 );
+            REQUIRE( row.get_value_string(3) == "Hello" );
+            REQUIRE( row.get_value_blob(4) == sqlcpp::blob{0x01, 0x02, 0x03, 0x04, 0x61, 0x62, 0x63, 0x64} );
+            REQUIRE( row.get_value_bool(5) == true );
         }
 
         {
-            auto& raw = *++it;
+            auto& row = *++it;
 
-            REQUIRE( raw.get_value_int(0) == 2 );
-            REQUIRE( raw.get_value_int64(1) == 2 );
-            REQUIRE( raw.get_value_double(2) == 4.0 );
-            REQUIRE( raw.get_value_string(3) == "World" );
-            REQUIRE( raw.get_value_blob(4) == sqlcpp::blob{'H','e','l','l','o'} );
-            REQUIRE( raw.get_value_bool(5) == false );
+            REQUIRE( row.get_value_int(0) == 2 );
+            REQUIRE( row.get_value_int64(1) == 2 );
+            REQUIRE( row.get_value_double(2) == 4.0 );
+            REQUIRE( row.get_value_string(3) == "World" );
+            REQUIRE( row.get_value_blob(4) == sqlcpp::blob{'H','e','l','l','o'} );
+            REQUIRE( row.get_value_bool(5) == false );
         }
 
         {
-            auto& raw = *++it;
+            auto& row = *++it;
 
-            REQUIRE( raw.get_value_int(0) == 3 );
-            REQUIRE( raw.get_value_int64(1) == 3 );
-            REQUIRE( raw.get_value_double(2) == 8.0 );
-            REQUIRE( raw.get_value_string(3) == "!!!" );
+            REQUIRE( row.get_value_int(0) == 3 );
+            REQUIRE( row.get_value_int64(1) == 3 );
+            REQUIRE( row.get_value_double(2) == 8.0 );
+            REQUIRE( row.get_value_string(3) == "!!!" );
 
-            REQUIRE( std::holds_alternative<std::nullptr_t >(raw.get_value(4)) );
-            REQUIRE( std::holds_alternative<std::nullptr_t >(raw.get_value(5)) );
+            REQUIRE( std::holds_alternative<std::nullptr_t >(row.get_value(4)) );
+            REQUIRE( std::holds_alternative<std::nullptr_t >(row.get_value(5)) );
         }
     }
 
@@ -156,50 +156,50 @@ TEST_CASE("Simple MariaDB", "[mariadb]")
         REQUIRE( rset->row_count() == 3 );
 
         {
-            auto& raw = rset->get_row(2);
+            auto& row = rset->get_row(2);
 
-            REQUIRE( raw.get_value_int(0) == 3 );
-            REQUIRE( raw.get_value_int64(1) == 3 );
-            REQUIRE( raw.get_value_double(2) == 8.0 );
-            REQUIRE( raw.get_value_string(3) == "!!!" );
+            REQUIRE( row.get_value_int(0) == 3 );
+            REQUIRE( row.get_value_int64(1) == 3 );
+            REQUIRE( row.get_value_double(2) == 8.0 );
+            REQUIRE( row.get_value_string(3) == "!!!" );
 
-            REQUIRE( std::holds_alternative<std::nullptr_t >(raw.get_value(4)) );
-            REQUIRE( std::holds_alternative<std::nullptr_t >(raw.get_value(5)) );
+            REQUIRE( std::holds_alternative<std::nullptr_t >(row.get_value(4)) );
+            REQUIRE( std::holds_alternative<std::nullptr_t >(row.get_value(5)) );
         }
 
         {
-            auto& raw = rset->get_row(1);
+            auto& row = rset->get_row(1);
 
-            REQUIRE( raw.get_value_int(0) == 2 );
-            REQUIRE( raw.get_value_int64(1) == 2 );
-            REQUIRE( raw.get_value_double(2) == 4.0 );
-            REQUIRE( raw.get_value_string(3) == "World" );
-            REQUIRE( raw.get_value_blob(4) == sqlcpp::blob{'H','e','l','l','o'} );
-            REQUIRE( raw.get_value_bool(5) == false );
+            REQUIRE( row.get_value_int(0) == 2 );
+            REQUIRE( row.get_value_int64(1) == 2 );
+            REQUIRE( row.get_value_double(2) == 4.0 );
+            REQUIRE( row.get_value_string(3) == "World" );
+            REQUIRE( row.get_value_blob(4) == sqlcpp::blob{'H','e','l','l','o'} );
+            REQUIRE( row.get_value_bool(5) == false );
         }
 
         {
-            auto& raw = rset->get_row(0);
-            REQUIRE( std::holds_alternative<int>(raw.get_value(0)) );
-            REQUIRE( std::holds_alternative<int64_t>(raw.get_value(1)) );
-            REQUIRE( std::holds_alternative<double>(raw.get_value(2)) );
-            REQUIRE( std::holds_alternative<std::string>(raw.get_value(3)) );
-            REQUIRE( std::holds_alternative<sqlcpp::blob>(raw.get_value(4)) );
-            REQUIRE( std::holds_alternative<bool>(raw.get_value(5)) );
+            auto& row = rset->get_row(0);
+            REQUIRE( std::holds_alternative<int>(row.get_value(0)) );
+            REQUIRE( std::holds_alternative<int64_t>(row.get_value(1)) );
+            REQUIRE( std::holds_alternative<double>(row.get_value(2)) );
+            REQUIRE( std::holds_alternative<std::string>(row.get_value(3)) );
+            REQUIRE( std::holds_alternative<sqlcpp::blob>(row.get_value(4)) );
+            REQUIRE( std::holds_alternative<bool>(row.get_value(5)) );
 
-            REQUIRE( std::get<int>(raw.get_value(0)) == 1 );
-            REQUIRE( std::get<int64_t>(raw.get_value(1)) == 1 );
-            REQUIRE( std::get<double>(raw.get_value(2)) == 2.0 );
-            REQUIRE( std::get<std::string>(raw.get_value(3)) == "Hello" );
-            REQUIRE( std::get<sqlcpp::blob>(raw.get_value(4)) == sqlcpp::blob{0x01, 0x02, 0x03, 0x04, 0x61, 0x62, 0x63, 0x64} );
-            REQUIRE( std::get<bool>(raw.get_value(5)) == true );
+            REQUIRE( std::get<int>(row.get_value(0)) == 1 );
+            REQUIRE( std::get<int64_t>(row.get_value(1)) == 1 );
+            REQUIRE( std::get<double>(row.get_value(2)) == 2.0 );
+            REQUIRE( std::get<std::string>(row.get_value(3)) == "Hello" );
+            REQUIRE( std::get<sqlcpp::blob>(row.get_value(4)) == sqlcpp::blob{0x01, 0x02, 0x03, 0x04, 0x61, 0x62, 0x63, 0x64} );
+            REQUIRE( std::get<bool>(row.get_value(5)) == true );
 
-            REQUIRE( raw.get_value_int(0) == 1 );
-            REQUIRE( raw.get_value_int64(1) == 1 );
-            REQUIRE( raw.get_value_double(2) == 2.0 );
-            REQUIRE( raw.get_value_string(3) == "Hello" );
-            REQUIRE( raw.get_value_blob(4) == sqlcpp::blob{0x01, 0x02, 0x03, 0x04, 0x61, 0x62, 0x63, 0x64} );
-            REQUIRE( raw.get_value_bool(5) == true );
+            REQUIRE( row.get_value_int(0) == 1 );
+            REQUIRE( row.get_value_int64(1) == 1 );
+            REQUIRE( row.get_value_double(2) == 2.0 );
+            REQUIRE( row.get_value_string(3) == "Hello" );
+            REQUIRE( row.get_value_blob(4) == sqlcpp::blob{0x01, 0x02, 0x03, 0x04, 0x61, 0x62, 0x63, 0x64} );
+            REQUIRE( row.get_value_bool(5) == true );
         }
 
     }
@@ -212,58 +212,58 @@ TEST_CASE("Simple MariaDB", "[mariadb]")
 
         std::vector<sqlcpp::details::generic_row> results;
 
-        stmt->execute([&](const sqlcpp::row& row) {
+        stmt->execute([&](const sqlcpp::row_base& row) {
             results.emplace_back(row);
         });
 
         REQUIRE( results.size() == 3 );
 
         {
-            const auto& raw = results[2];
+            const auto& row = results[2];
 
-            REQUIRE( raw.get_value_int(0) == 3 );
-            REQUIRE( raw.get_value_int64(1) == 3 );
-            REQUIRE( raw.get_value_double(2) == 8.0 );
-            REQUIRE( raw.get_value_string(3) == "!!!" );
+            REQUIRE( row.get_value_int(0) == 3 );
+            REQUIRE( row.get_value_int64(1) == 3 );
+            REQUIRE( row.get_value_double(2) == 8.0 );
+            REQUIRE( row.get_value_string(3) == "!!!" );
 
-            REQUIRE( std::holds_alternative<std::nullptr_t >(raw.get_value(4)) );
-            REQUIRE( std::holds_alternative<std::nullptr_t >(raw.get_value(5)) );
+            REQUIRE( std::holds_alternative<std::nullptr_t >(row.get_value(4)) );
+            REQUIRE( std::holds_alternative<std::nullptr_t >(row.get_value(5)) );
         }
 
         {
-            const auto& raw = results[1];
+            const auto& row = results[1];
 
-            REQUIRE( raw.get_value_int(0) == 2 );
-            REQUIRE( raw.get_value_int64(1) == 2 );
-            REQUIRE( raw.get_value_double(2) == 4.0 );
-            REQUIRE( raw.get_value_string(3) == "World" );
-            REQUIRE( raw.get_value_blob(4) == sqlcpp::blob{'H','e','l','l','o'} );
-            REQUIRE( raw.get_value_bool(5) == false );
+            REQUIRE( row.get_value_int(0) == 2 );
+            REQUIRE( row.get_value_int64(1) == 2 );
+            REQUIRE( row.get_value_double(2) == 4.0 );
+            REQUIRE( row.get_value_string(3) == "World" );
+            REQUIRE( row.get_value_blob(4) == sqlcpp::blob{'H','e','l','l','o'} );
+            REQUIRE( row.get_value_bool(5) == false );
         }
 
         {
-            const auto& raw = results[0];
+            const auto& row = results[0];
 
-            REQUIRE( std::holds_alternative<int>(raw.get_value(0)) );
-            REQUIRE( std::holds_alternative<int64_t>(raw.get_value(1)) );
-            REQUIRE( std::holds_alternative<double>(raw.get_value(2)) );
-            REQUIRE( std::holds_alternative<std::string>(raw.get_value(3)) );
-            REQUIRE( std::holds_alternative<sqlcpp::blob>(raw.get_value(4)) );
-            REQUIRE( std::holds_alternative<bool>(raw.get_value(5)) );
+            REQUIRE( std::holds_alternative<int>(row.get_value(0)) );
+            REQUIRE( std::holds_alternative<int64_t>(row.get_value(1)) );
+            REQUIRE( std::holds_alternative<double>(row.get_value(2)) );
+            REQUIRE( std::holds_alternative<std::string>(row.get_value(3)) );
+            REQUIRE( std::holds_alternative<sqlcpp::blob>(row.get_value(4)) );
+            REQUIRE( std::holds_alternative<bool>(row.get_value(5)) );
 
-            REQUIRE( std::get<int>(raw.get_value(0)) == 1 );
-            REQUIRE( std::get<int64_t>(raw.get_value(1)) == 1 );
-            REQUIRE( std::get<double>(raw.get_value(2)) == 2.0 );
-            REQUIRE( std::get<std::string>(raw.get_value(3)) == "Hello" );
-            REQUIRE( std::get<sqlcpp::blob>(raw.get_value(4)) == sqlcpp::blob{0x01, 0x02, 0x03, 0x04, 0x61, 0x62, 0x63, 0x64} );
-            REQUIRE( std::get<bool>(raw.get_value(5)) == true );
+            REQUIRE( std::get<int>(row.get_value(0)) == 1 );
+            REQUIRE( std::get<int64_t>(row.get_value(1)) == 1 );
+            REQUIRE( std::get<double>(row.get_value(2)) == 2.0 );
+            REQUIRE( std::get<std::string>(row.get_value(3)) == "Hello" );
+            REQUIRE( std::get<sqlcpp::blob>(row.get_value(4)) == sqlcpp::blob{0x01, 0x02, 0x03, 0x04, 0x61, 0x62, 0x63, 0x64} );
+            REQUIRE( std::get<bool>(row.get_value(5)) == true );
 
-            REQUIRE( raw.get_value_int(0) == 1 );
-            REQUIRE( raw.get_value_int64(1) == 1 );
-            REQUIRE( raw.get_value_double(2) == 2.0 );
-            REQUIRE( raw.get_value_string(3) == "Hello" );
-            REQUIRE( raw.get_value_blob(4) == sqlcpp::blob{0x01, 0x02, 0x03, 0x04, 0x61, 0x62, 0x63, 0x64} );
-            REQUIRE( raw.get_value_bool(5) == true );
+            REQUIRE( row.get_value_int(0) == 1 );
+            REQUIRE( row.get_value_int64(1) == 1 );
+            REQUIRE( row.get_value_double(2) == 2.0 );
+            REQUIRE( row.get_value_string(3) == "Hello" );
+            REQUIRE( row.get_value_blob(4) == sqlcpp::blob{0x01, 0x02, 0x03, 0x04, 0x61, 0x62, 0x63, 0x64} );
+            REQUIRE( row.get_value_bool(5) == true );
         }
     }
 

@@ -39,7 +39,7 @@ class cursor_resultset;
 class buffered_resultset;
 class resultset_row_iterator;
 class resultset_row_iterator_impl;
-class row;
+class row_base;
 
 class connection
 {
@@ -52,8 +52,6 @@ public:
     virtual std::shared_ptr<stats_result> execute(const std::string& query) = 0;
     virtual std::shared_ptr<statement> prepare(const std::string& query) = 0;
 };
-
-
 
 enum value_type {
     NONE = -1,
@@ -110,7 +108,7 @@ public:
     virtual ~statement() = default;
 
     virtual std::shared_ptr<cursor_resultset> execute() = 0;
-    virtual void execute(std::function<void(const row&)> func) = 0;
+    virtual void execute(std::function<void(const row_base&)> func) = 0;
     virtual std::shared_ptr<buffered_resultset> execute_buffered() = 0;
 
     virtual unsigned int parameter_count() const = 0;
@@ -140,12 +138,12 @@ public:
     virtual statement& bind(unsigned int index, const value& value) = 0;
 };
 
-class row
+class row_base
 {
 protected:
-    row() = default;
+    row_base() = default;
 public:
-    virtual ~row() = default;
+    virtual ~row_base() = default;
 
     virtual size_t size() const = 0;
 
@@ -163,6 +161,32 @@ public:
     virtual std::vector<value> get_values() const;
 };
 
+class row : public row_base
+{
+protected:
+    const row_base* _row;
+public:
+    explicit row(const row_base* row) : _row(row) {}
+    row(const row& other) = default;
+    row(row&& other) = default;
+    row& operator=(const row& other) = default;
+    row& operator=(row&& other) = default;
+    virtual ~row() = default;
+
+    bool ok() const {return _row != nullptr;}
+    operator bool() const { return ok(); }
+
+    size_t size() const override { return _row->size(); }
+    value get_value(unsigned int index) const override { return _row->get_value(index); }
+    std::string get_value_string(unsigned int index) const override {return _row->get_value_string(index);}
+    blob get_value_blob(unsigned int index) const override {return _row->get_value_blob(index);}
+    bool get_value_bool(unsigned int index) const override {return _row->get_value_bool(index);}
+    int get_value_int(unsigned int index) const override {return _row->get_value_int(index);}
+    int64_t get_value_int64(unsigned int index) const override {return _row->get_value_int64(index);}
+    double get_value_double(unsigned int index) const override {return _row->get_value_double(index);}
+    std::vector<value> get_values() const override { return _row->get_values(); }
+};
+
 class resultset_row_iterator_impl
 {
 protected:
@@ -170,7 +194,7 @@ protected:
 public:
     virtual ~resultset_row_iterator_impl() = default;
 
-    virtual const row& get() const =0;
+    virtual const row_base& get() const =0;
     virtual bool next() = 0;
     virtual bool different(const resultset_row_iterator_impl& other) const = 0;
 };
@@ -179,6 +203,7 @@ class resultset_row_iterator : public std::input_iterator_tag
 {
 protected:
     std::shared_ptr<resultset_row_iterator_impl> _impl;
+    mutable row _row{nullptr};
 
 public:
     resultset_row_iterator(std::shared_ptr<resultset_row_iterator_impl>&& impl) : _impl(std::move(impl)) {}
@@ -248,7 +273,7 @@ protected:
 public:
     virtual unsigned int row_count() const = 0;
 
-    virtual const row& get_row(unsigned long long index) const = 0;
+    virtual const row_base& get_row(unsigned long long index) const = 0;
 };
 
 

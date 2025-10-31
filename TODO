@@ -1,0 +1,20 @@
+Roadmap and Todos
+=================
+
+This file contains a raw bunch of ideas and bugs or misses to address, develop or to fix.
+
+- Fix CMake modules export (module names and dependencies)
+- Add common binding parameter format for prepared statements, and implement index and name based binding
+- Add reuse of prepared statements, to execute with different values binding
+- Add transaction commit/rollback
+- Add DSL builder for queries, with specific dialect adapters for each database
+- Add common SQL string parsing to DSL
+- Add Firebird, Oracle and MS SQL server dedicated drivers
+- Add generic ODBC driver
+- Add mapper to objects and tuples from resultset/rows
+- Add DSL for database schema, with creation/compatibility verification support, and basic object/tuple mapping
+- Add DSL for basic request from database schema DSL
+- Add proper exception hierarchy and full implementation
+- Windows port
+- Tests using containers for instantiate databases (and testcontainer ?)
+

@@ -17,15 +17,117 @@
 
 #include "../include/sqlcpp/sqlcpp.hpp"
 
-#include <filesystem>
-
 #include "../include/sqlcpp/details.hpp"
 
+#include "sqlcpp_config.hpp"
+
+#include <filesystem>
 #include <stdexcept>
 #include <iostream>
+#include <dlfcn.h>
+
+namespace fs = std::filesystem;
 
 namespace sqlcpp
 {
+
+
+//
+// Connection factory registry
+//
+
+details::connection_factory_registry details::connection_factory_registry::_instance;
+
+details::connection_factory_registry& details::connection_factory_registry::get()
+{
+    return _instance;
+}
+
+void details::connection_factory_registry::register_factory(std::shared_ptr<details::connection_factory> factory)
+{
+    if (factory) {
+        for (const auto& scheme : factory->supported_schemes()) {
+            if (_factories.find(scheme) == _factories.end()) {
+                _factories[scheme] = factory;
+            }
+        }
+    }
+}
+
+std::shared_ptr<details::connection_factory> details::connection_factory_registry::get_factory(const std::string& scheme)
+{
+    auto factory_it = _factories.find(scheme);
+    if (factory_it != _factories.end() ) {
+        return factory_it->second;
+    }
+    return lookup_for_factory(scheme);
+}
+
+std::shared_ptr<details::connection_factory> details::connection_factory_registry::lookup_for_factory(const std::string& scheme)
+{
+    for (const auto& path : details::driver_search_paths) {
+        if (fs::exists(path) && fs::is_directory(path) ) {
+            if (auto factory = lookup_for_factory(scheme, path); factory) {
+                return factory;
+            }
+        }
+    }
+    return nullptr;
+}
+
+std::shared_ptr<details::connection_factory>  details::connection_factory_registry::lookup_for_factory(const std::string& scheme, const fs::path& driver_dir_path)
+{
+    for (auto const& dir_entry : std::filesystem::directory_iterator{driver_dir_path, fs::directory_options::follow_directory_symlink}) {
+        if (dir_entry.path().extension() == ".so" && dir_entry.path().stem() == scheme) {
+            load_factory_library(dir_entry.path());
+            if (auto it = _factories.find(scheme); it != _factories.end()) {
+                return it->second;
+            }
+        }
+    }
+    return {};
+}
+
+void details::connection_factory_registry::load_factory_library(const std::filesystem::path& lib_path)
+{
+    // Load the library
+    if (fs::exists(lib_path)) {
+        void* handle = dlopen(lib_path.c_str(), RTLD_LAZY);
+        if (!handle) {
+            std::cerr << "Failed to load library: " << dlerror() << std::endl;
+//            throw std::runtime_error("Failed to load library: " + std::string(dlerror()));
+        }
+    }
+}
+
+//
+// Various helpers
+//
+
+template<typename T>
+std::string to_lower(const T& str) {
+    std::string res;
+    res.reserve(str.size());
+    std::transform(str.begin(), str.end(), std::back_inserter(res), [](unsigned char c) { return std::tolower(c); });
+    return res;
+}
+
+std::shared_ptr<connection> details::connection_factory_registry::create_connection(const std::string_view& url) {
+    size_t pos = url.find_first_of(':');
+    if (pos == std::string_view::npos) {
+        return {};
+    }
+    std::string_view scheme = url.substr(0, pos);
+    std::string_view rest = url.substr(pos + 1);
+    if (scheme.empty() || rest.empty()) {
+        return nullptr;
+    }
+    auto factory = get_factory(to_lower(scheme));
+    if (!factory) {
+        return nullptr;
+    }
+    return factory->do_create_connection(rest);
+}
 
 //
 // SQLCPP connection creation
@@ -33,7 +135,7 @@ namespace sqlcpp
 
 std::shared_ptr<connection> connection::create(const std::string& connection_string)
 {
-    return {};
+    return details::connection_factory_registry::get().create_connection(connection_string);
 }
 
 //
@@ -303,7 +405,7 @@ std::optional<double> to_double_opt(const value& val)
 // Basic row
 //
 
-std::vector<value> row::get_values() const
+std::vector<value> row_base::get_values() const
 {
     std::vector<value> res;
     for (size_t i=0; i<size(); ++i) {
@@ -316,7 +418,7 @@ std::vector<value> row::get_values() const
 // Generic row
 //
 
-details::generic_row::generic_row(const row& row)
+details::generic_row::generic_row(const row_base& row)
 {
     size_t count = row.size();
     for(size_t i=0; i<count; ++i) {
@@ -406,7 +508,7 @@ resultset_row_iterator details::generic_buffered_resultset::end() const
 // generic_buffered_resultset_row_iterator_impl
 //
 
-const row& details::generic_buffered_resultset_row_iterator_impl::get() const
+const row_base& details::generic_buffered_resultset_row_iterator_impl::get() const
 {
     return *_iter;
 }
@@ -464,6 +566,7 @@ resultset_row_iterator& resultset_row_iterator::operator++()
 {
     if(_impl) {
         _impl->next();
+        _row = row(&_impl->get());
     }
     return *this;
 }
@@ -472,6 +575,7 @@ void resultset_row_iterator::operator++(int)
 {
     if(_impl) {
         _impl->next();
+        _row = row(&_impl->get());
     }
 }
 
@@ -489,7 +593,10 @@ bool resultset_row_iterator::operator!=(const resultset_row_iterator& other) con
 const row& resultset_row_iterator::operator*() const
 {
     if(_impl) {
-        return _impl->get();
+        if(!_row) {
+            _row = row(&_impl->get());
+        }
+        return _row;
     } else {
         throw std::runtime_error("Invalid iterator");
     }
@@ -498,7 +605,10 @@ const row& resultset_row_iterator::operator*() const
 const row& resultset_row_iterator::operator->() const
 {
     if(_impl) {
-        return _impl->get();
+        if(!_row) {
+            _row = row(&_impl->get());
+        }
+        return _row;
     } else {
         throw std::runtime_error("Invalid iterator");
     }
