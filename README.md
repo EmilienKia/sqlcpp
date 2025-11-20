@@ -131,13 +131,26 @@ auto select_stmt = db->prepare("SELECT * FROM users WHERE name = $1");
 select_stmt->bind(1, "John");
 ```
 
-The format of variables to bind is specific to the database system:
-* SQLite : `?`, `?NNN`, `:VVV`, `@VVV`, `$VVV`,... Named and index bindings are both supported.
-See [SQLite Parameter Binding](https://www.sqlite.org/c3ref/bind_blob.html)
-* PostgreSQL : `$NNN`. Only index binding is supported.
-See [PostgreSQL Parameter Binding](https://www.postgresql.org/docs/current/sql-prepare.html)
-* MySQL/MariaDB : `?`. Only index binding is supported.
-See [MySQL Parameter Binding](https://dev.mysql.com/doc/refman/9.5/en/sql-prepared-statements.html)
+Variable binding is in the form of ':', '?', '$' or '@' eventually followed by a decimal number representing an index,
+or a name (composed of alphabetic characters and underscores).
+
+The index could be omitted. Then the variable will be bound using incrementing from the last index.
+A named variable may also be referenced by its implicit index.
+
+Implicit index starts at 0. When an explicit index is set for a variable, and the number is not a direct increment,
+the specified number is user, and intermediate indexes are skipped.
+Explicitly specifying an index lower than the previous one (decrement) is an error.
+
+A variable must be referenced one and only one time in a query.
+
+```cpp
+auto select_stmt = db->prepare("SELECT * FROM users WHERE name = @ AND age > $age AND age < $3");
+```
+Here, 3 variables are defined:
+- '@' : an unnamed variable implicitly bound to the index 0
+- '$age' : a named variable implicitly bound to the index 1
+- '$3' : an unnamed variable explicitly bound to the index 3
+The index 2 is skipped (or ignored).
 
 #### Query execution and retrieve results 
 

@@ -77,41 +77,41 @@ TEST_CASE("Simple SQLite", "[sqlite]") {
             REQUIRE( std::holds_alternative<std::string>(row.get_value(3)) );
             REQUIRE( std::holds_alternative<sqlcpp::blob>(row.get_value(4)) );
 
-            REQUIRE( std::get<int64_t>(row.get_value(0)) == 1 );
-            REQUIRE( std::get<int64_t>(row.get_value(1)) == 1 );
-            REQUIRE( std::get<double>(row.get_value(2)) == 2.0 );
-            REQUIRE( std::get<std::string>(row.get_value(3)) == "Hello" );
-            REQUIRE( std::get<sqlcpp::blob>(row.get_value(4)) == sqlcpp::blob{0x01, 0x02, 0x03, 0x04, 0x61, 0x62, 0x63, 0x64} );
+            CHECK( std::get<int64_t>(row.get_value(0)) == 1 );
+            CHECK( std::get<int64_t>(row.get_value(1)) == 1 );
+            CHECK( std::get<double>(row.get_value(2)) == 2.0 );
+            CHECK( std::get<std::string>(row.get_value(3)) == "Hello" );
+            CHECK( std::get<sqlcpp::blob>(row.get_value(4)) == sqlcpp::blob{0x01, 0x02, 0x03, 0x04, 0x61, 0x62, 0x63, 0x64} );
 
-            REQUIRE( row.get_value_int(0) == 1 );
-            REQUIRE( row.get_value_int64(0) == 1 );
-            REQUIRE( row.get_value_int64(1) == 1 );
-            REQUIRE( row.get_value_double(2) == 2.0 );
-            REQUIRE( row.get_value_string(3) == "Hello" );
-            REQUIRE( row.get_value_blob(4) == sqlcpp::blob{0x01, 0x02, 0x03, 0x04, 0x61, 0x62, 0x63, 0x64} );
+            CHECK( row.get_value_int(0) == 1 );
+            CHECK( row.get_value_int64(0) == 1 );
+            CHECK( row.get_value_int64(1) == 1 );
+            CHECK( row.get_value_double(2) == 2.0 );
+            CHECK( row.get_value_string(3) == "Hello" );
+            CHECK( row.get_value_blob(4) == sqlcpp::blob{0x01, 0x02, 0x03, 0x04, 0x61, 0x62, 0x63, 0x64} );
         }
 
         {
             auto& row = *++it;
 
-            REQUIRE( row.get_value_int(0) == 2 );
-            REQUIRE( row.get_value_int64(0) == 2 );
-            REQUIRE( row.get_value_int64(1) == 2 );
-            REQUIRE( row.get_value_double(2) == 4.0 );
-            REQUIRE( row.get_value_string(3) == "World" );
-            REQUIRE( row.get_value_blob(4) == sqlcpp::blob{'H', 'e', 'l', 'l', 'o'} );
+            CHECK( row.get_value_int(0) == 2 );
+            CHECK( row.get_value_int64(0) == 2 );
+            CHECK( row.get_value_int64(1) == 2 );
+            CHECK( row.get_value_double(2) == 4.0 );
+            CHECK( row.get_value_string(3) == "World" );
+            CHECK( row.get_value_blob(4) == sqlcpp::blob{'H', 'e', 'l', 'l', 'o'} );
         }
 
         {
             auto& row = *++it;
 
-            REQUIRE( row.get_value_int(0) == 3 );
-            REQUIRE( row.get_value_int64(0) == 3 );
-            REQUIRE( row.get_value_int64(1) == 3 );
-            REQUIRE( row.get_value_double(2) == 8.0 );
-            REQUIRE( row.get_value_string(3) == "!!!" );
+            CHECK( row.get_value_int(0) == 3 );
+            CHECK( row.get_value_int64(0) == 3 );
+            CHECK( row.get_value_int64(1) == 3 );
+            CHECK( row.get_value_double(2) == 8.0 );
+            CHECK( row.get_value_string(3) == "!!!" );
 
-            REQUIRE( std::holds_alternative<std::nullptr_t >(row.get_value(4)) );
+            CHECK( std::holds_alternative<std::nullptr_t >(row.get_value(4)) );
         }
 
         // TODO test boolean type
@@ -172,24 +172,24 @@ TEST_CASE("Simple SQLite", "[sqlite]") {
         {
             auto& row = rset->get_row(2);;
 
-            REQUIRE( row.get_value_int(0) == 3 );
-            REQUIRE( row.get_value_int64(0) == 3 );
-            REQUIRE( row.get_value_int64(1) == 3 );
-            REQUIRE( row.get_value_double(2) == 8.0 );
-            REQUIRE( row.get_value_string(3) == "!!!" );
+            CHECK( row.get_value_int(0) == 3 );
+            CHECK( row.get_value_int64(0) == 3 );
+            CHECK( row.get_value_int64(1) == 3 );
+            CHECK( row.get_value_double(2) == 8.0 );
+            CHECK( row.get_value_string(3) == "!!!" );
 
-            REQUIRE( std::holds_alternative<std::nullptr_t >(row.get_value(4)) );
+            CHECK( std::holds_alternative<std::nullptr_t >(row.get_value(4)) );
         }
 
         {
             auto& row = rset->get_row(1);
 
-            REQUIRE( row.get_value_int(0) == 2 );
-            REQUIRE( row.get_value_int64(0) == 2 );
-            REQUIRE( row.get_value_int64(1) == 2 );
-            REQUIRE( row.get_value_double(2) == 4.0 );
-            REQUIRE( row.get_value_string(3) == "World" );
-            REQUIRE( row.get_value_blob(4) == sqlcpp::blob{'H', 'e', 'l', 'l', 'o'} );
+            CHECK( row.get_value_int(0) == 2 );
+            CHECK( row.get_value_int64(0) == 2 );
+            CHECK( row.get_value_int64(1) == 2 );
+            CHECK( row.get_value_double(2) == 4.0 );
+            CHECK( row.get_value_string(3) == "World" );
+            CHECK( row.get_value_blob(4) == sqlcpp::blob{'H', 'e', 'l', 'l', 'o'} );
         }
 
         {
@@ -200,18 +200,18 @@ TEST_CASE("Simple SQLite", "[sqlite]") {
             REQUIRE( std::holds_alternative<std::string>(row.get_value(3)) );
             REQUIRE( std::holds_alternative<sqlcpp::blob>(row.get_value(4)) );
 
-            REQUIRE( std::get<int64_t>(row.get_value(0)) == 1 );
-            REQUIRE( std::get<int64_t>(row.get_value(1)) == 1 );
-            REQUIRE( std::get<double>(row.get_value(2)) == 2.0 );
-            REQUIRE( std::get<std::string>(row.get_value(3)) == "Hello" );
-            REQUIRE( std::get<sqlcpp::blob>(row.get_value(4)) == sqlcpp::blob{0x01, 0x02, 0x03, 0x04, 0x61, 0x62, 0x63, 0x64} );
+            CHECK( std::get<int64_t>(row.get_value(0)) == 1 );
+            CHECK( std::get<int64_t>(row.get_value(1)) == 1 );
+            CHECK( std::get<double>(row.get_value(2)) == 2.0 );
+            CHECK( std::get<std::string>(row.get_value(3)) == "Hello" );
+            CHECK( std::get<sqlcpp::blob>(row.get_value(4)) == sqlcpp::blob{0x01, 0x02, 0x03, 0x04, 0x61, 0x62, 0x63, 0x64} );
 
-            REQUIRE( row.get_value_int(0) == 1 );
-            REQUIRE( row.get_value_int64(0) == 1 );
-            REQUIRE( row.get_value_int64(1) == 1 );
-            REQUIRE( row.get_value_double(2) == 2.0 );
-            REQUIRE( row.get_value_string(3) == "Hello" );
-            REQUIRE( row.get_value_blob(4) == sqlcpp::blob{0x01, 0x02, 0x03, 0x04, 0x61, 0x62, 0x63, 0x64} );
+            CHECK( row.get_value_int(0) == 1 );
+            CHECK( row.get_value_int64(0) == 1 );
+            CHECK( row.get_value_int64(1) == 1 );
+            CHECK( row.get_value_double(2) == 2.0 );
+            CHECK( row.get_value_string(3) == "Hello" );
+            CHECK( row.get_value_blob(4) == sqlcpp::blob{0x01, 0x02, 0x03, 0x04, 0x61, 0x62, 0x63, 0x64} );
         }
         // TODO test boolean type
     }
@@ -232,24 +232,24 @@ TEST_CASE("Simple SQLite", "[sqlite]") {
         {
             const auto& row = results[2];
 
-            REQUIRE( row.get_value_int(0) == 3 );
-            REQUIRE( row.get_value_int64(0) == 3 );
-            REQUIRE( row.get_value_int64(1) == 3 );
-            REQUIRE( row.get_value_double(2) == 8.0 );
-            REQUIRE( row.get_value_string(3) == "!!!" );
+            CHECK( row.get_value_int(0) == 3 );
+            CHECK( row.get_value_int64(0) == 3 );
+            CHECK( row.get_value_int64(1) == 3 );
+            CHECK( row.get_value_double(2) == 8.0 );
+            CHECK( row.get_value_string(3) == "!!!" );
 
-            REQUIRE( std::holds_alternative<std::nullptr_t >(row.get_value(4)) );
+            CHECK( std::holds_alternative<std::nullptr_t >(row.get_value(4)) );
         }
 
         {
             const auto& row = results[1];
 
-            REQUIRE( row.get_value_int(0) == 2 );
-            REQUIRE( row.get_value_int64(0) == 2 );
-            REQUIRE( row.get_value_int64(1) == 2 );
-            REQUIRE( row.get_value_double(2) == 4.0 );
-            REQUIRE( row.get_value_string(3) == "World" );
-            REQUIRE( row.get_value_blob(4) == sqlcpp::blob{'H', 'e', 'l', 'l', 'o'} );
+            CHECK( row.get_value_int(0) == 2 );
+            CHECK( row.get_value_int64(0) == 2 );
+            CHECK( row.get_value_int64(1) == 2 );
+            CHECK( row.get_value_double(2) == 4.0 );
+            CHECK( row.get_value_string(3) == "World" );
+            CHECK( row.get_value_blob(4) == sqlcpp::blob{'H', 'e', 'l', 'l', 'o'} );
         }
 
         {
@@ -261,18 +261,18 @@ TEST_CASE("Simple SQLite", "[sqlite]") {
             REQUIRE( std::holds_alternative<std::string>(row.get_value(3)) );
             REQUIRE( std::holds_alternative<sqlcpp::blob>(row.get_value(4)) );
 
-            REQUIRE( std::get<int64_t>(row.get_value(0)) == 1 );
-            REQUIRE( std::get<int64_t>(row.get_value(1)) == 1 );
-            REQUIRE( std::get<double>(row.get_value(2)) == 2.0 );
-            REQUIRE( std::get<std::string>(row.get_value(3)) == "Hello" );
-            REQUIRE( std::get<sqlcpp::blob>(row.get_value(4)) == sqlcpp::blob{0x01, 0x02, 0x03, 0x04, 0x61, 0x62, 0x63, 0x64} );
+            CHECK( std::get<int64_t>(row.get_value(0)) == 1 );
+            CHECK( std::get<int64_t>(row.get_value(1)) == 1 );
+            CHECK( std::get<double>(row.get_value(2)) == 2.0 );
+            CHECK( std::get<std::string>(row.get_value(3)) == "Hello" );
+            CHECK( std::get<sqlcpp::blob>(row.get_value(4)) == sqlcpp::blob{0x01, 0x02, 0x03, 0x04, 0x61, 0x62, 0x63, 0x64} );
 
-            REQUIRE( row.get_value_int(0) == 1 );
-            REQUIRE( row.get_value_int64(0) == 1 );
-            REQUIRE( row.get_value_int64(1) == 1 );
-            REQUIRE( row.get_value_double(2) == 2.0 );
-            REQUIRE( row.get_value_string(3) == "Hello" );
-            REQUIRE( row.get_value_blob(4) == sqlcpp::blob{0x01, 0x02, 0x03, 0x04, 0x61, 0x62, 0x63, 0x64} );
+            CHECK( row.get_value_int(0) == 1 );
+            CHECK( row.get_value_int64(0) == 1 );
+            CHECK( row.get_value_int64(1) == 1 );
+            CHECK( row.get_value_double(2) == 2.0 );
+            CHECK( row.get_value_string(3) == "Hello" );
+            CHECK( row.get_value_blob(4) == sqlcpp::blob{0x01, 0x02, 0x03, 0x04, 0x61, 0x62, 0x63, 0x64} );
         }
 
         // TODO test boolean type
@@ -301,7 +301,7 @@ TEST_CASE("SQLite Variable Binding", "[sqlite][binding]")
 
     SECTION("Bind by index")
     {
-        auto stmt = db->prepare("INSERT INTO binding_test(int_val, real_val, text_val, blob_val, bool_val) VALUES(?, ?, ?, ?, ?)");
+        auto stmt = db->prepare("INSERT INTO binding_test(int_val, real_val, text_val, blob_val, bool_val) VALUES(?, :, @, $, ?)");
         REQUIRE( !!stmt );
 
         stmt->bind(0, static_cast<int64_t>(42));
@@ -314,47 +314,49 @@ TEST_CASE("SQLite Variable Binding", "[sqlite][binding]")
         REQUIRE( !!result );
 
         // Verify inserted data
-        auto select_stmt = db->prepare("SELECT int_val, real_val, text_val, blob_val, bool_val FROM binding_test WHERE id = 1");
+        auto select_stmt = db->prepare("SELECT int_val, real_val, text_val, blob_val, bool_val FROM binding_test WHERE id = $1");
+        select_stmt->bind(1, 1);
         auto rset = select_stmt->execute();
         REQUIRE( !!rset );
 
         auto it = rset->begin();
         auto& row = *it;
 
-        REQUIRE( row.get_value_int64(0) == 42 );
-        REQUIRE( row.get_value_double(1) == 3.14 );
-        REQUIRE( row.get_value_string(2) == "test" );
-        REQUIRE( row.get_value_blob(3) == sqlcpp::blob{0x01, 0x02, 0x03} );
-        REQUIRE( row.get_value_int(4) == 1 );
+        CHECK( row.get_value_int64(0) == 42 );
+        CHECK( row.get_value_double(1) == 3.14 );
+        CHECK( row.get_value_string(2) == "test" );
+        CHECK( row.get_value_blob(3) == sqlcpp::blob{0x01, 0x02, 0x03} );
+        CHECK( row.get_value_int(4) == 1 );
     }
 
     SECTION("Bind by name")
     {
-        auto stmt = db->prepare("INSERT INTO binding_test(int_val, real_val, text_val, blob_val, bool_val) VALUES(:int_val, :real_val, :text_val, :blob_val, :bool_val)");
+        auto stmt = db->prepare("INSERT INTO binding_test(int_val, real_val, text_val, blob_val, bool_val) VALUES(:int_val, ?real_val, @text_val, $blob_val, :bool_val)");
         REQUIRE( !!stmt );
 
-        stmt->bind(":int_val", static_cast<int64_t>(100));
-        stmt->bind(":real_val", 2.71);
-        stmt->bind(":text_val", std::string("named"));
-        stmt->bind(":blob_val", sqlcpp::blob{0xAA, 0xBB});
-        stmt->bind(":bool_val", false);
+        stmt->bind("int_val", static_cast<int64_t>(100));
+        stmt->bind("real_val", 2.71);
+        stmt->bind("text_val", std::string("named"));
+        stmt->bind("blob_val", sqlcpp::blob{0xAA, 0xBB});
+        stmt->bind("bool_val", false);
 
         auto result = stmt->execute();
         REQUIRE( !!result );
 
         // Verify inserted data
-        auto select_stmt = db->prepare("SELECT int_val, real_val, text_val, blob_val, bool_val FROM binding_test WHERE int_val = 100");
+        auto select_stmt = db->prepare("SELECT int_val, real_val, text_val, blob_val, bool_val FROM binding_test WHERE int_val = $1");
+        select_stmt->bind(1, static_cast<int64_t>(100));
         auto rset = select_stmt->execute();
         REQUIRE( !!rset );
 
         auto it = rset->begin();
         auto& row = *it;
 
-        REQUIRE( row.get_value_int64(0) == 100 );
-        REQUIRE( row.get_value_double(1) == 2.71 );
-        REQUIRE( row.get_value_string(2) == "named" );
-        REQUIRE( row.get_value_blob(3) == sqlcpp::blob{0xAA, 0xBB} );
-        REQUIRE( row.get_value_int(4) == 0 );
+        CHECK( row.get_value_int64(0) == 100 );
+        CHECK( row.get_value_double(1) == 2.71 );
+        CHECK( row.get_value_string(2) == "named" );
+        CHECK( row.get_value_blob(3) == sqlcpp::blob{0xAA, 0xBB} );
+        CHECK( row.get_value_int(4) == 0 );
     }
 
     SECTION("Bind NULL values")
@@ -378,10 +380,10 @@ TEST_CASE("SQLite Variable Binding", "[sqlite][binding]")
         auto it = rset->begin();
         auto& row = *it;
 
-        REQUIRE( std::holds_alternative<std::nullptr_t>(row.get_value(0)) );
-        REQUIRE( std::holds_alternative<std::nullptr_t>(row.get_value(1)) );
-        REQUIRE( std::holds_alternative<std::nullptr_t>(row.get_value(2)) );
-        REQUIRE( std::holds_alternative<std::nullptr_t>(row.get_value(3)) );
+        CHECK( std::holds_alternative<std::nullptr_t>(row.get_value(0)) );
+        CHECK( std::holds_alternative<std::nullptr_t>(row.get_value(1)) );
+        CHECK( std::holds_alternative<std::nullptr_t>(row.get_value(2)) );
+        CHECK( std::holds_alternative<std::nullptr_t>(row.get_value(3)) );
     }
 
     SECTION("Multiple executions with different bindings")
@@ -400,7 +402,9 @@ TEST_CASE("SQLite Variable Binding", "[sqlite][binding]")
         stmt->execute();
 
         // Verify both rows
-        auto select_stmt = db->prepare("SELECT COUNT(*) FROM binding_test WHERE int_val IN (1, 2)");
+        auto select_stmt = db->prepare("SELECT COUNT(*) FROM binding_test WHERE int_val IN (:1, $2)");
+        select_stmt->bind(1, static_cast<int64_t>(1));
+        select_stmt->bind(2, static_cast<int64_t>(2));
         auto rset = select_stmt->execute();
         REQUIRE( !!rset );
 
@@ -427,13 +431,16 @@ TEST_CASE("SQLite Variable Binding", "[sqlite][binding]")
         stmt->execute();
 
         // Verify all values
-        auto select_stmt = db->prepare("SELECT COUNT(*) FROM binding_test WHERE int_val IN (123, 456, 789)");
+        auto select_stmt = db->prepare("SELECT COUNT(*) FROM binding_test WHERE int_val IN (?1, $2, :3)");
+        select_stmt->bind(1, 123);
+        select_stmt->bind(2, static_cast<int64_t>(456));
+        select_stmt->bind(3, static_cast<int32_t>(789));
         auto rset = select_stmt->execute();
         REQUIRE( !!rset );
 
         auto it = rset->begin();
         auto& row = *it;
-        REQUIRE( row.get_value_int64(0) == 3 );
+        CHECK( row.get_value_int64(0) == 3 );
     }
 }
 

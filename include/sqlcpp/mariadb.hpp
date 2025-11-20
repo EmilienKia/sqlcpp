@@ -44,8 +44,8 @@ public:
     connection(MYSQL* db);
     virtual ~connection() = default;
 
-    std::shared_ptr<sqlcpp::statement> prepare(const std::string& sql) override;
-    std::shared_ptr<stats_result> execute(const std::string& sql) override;
+    std::shared_ptr<sqlcpp::statement> prepare(const std::string& query) override;
+    std::shared_ptr<stats_result> execute(const std::string& query) override;
 
 };
 

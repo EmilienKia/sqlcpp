@@ -332,6 +332,12 @@ void mysql_statement::store_all_results()
 
 void mysql_statement::prepare_buffers()
 {
+    // Clear buffers used by execute
+    _binds.clear();
+    _buffers.clear();
+    _is_nulls.clear();
+    _my_types.clear();
+
     if (ok()) {
         // Retrieve metadata for result columns
         MYSQL_RES* metadata = mysql_stmt_result_metadata(_stmt.get());
@@ -868,16 +874,20 @@ private:
 //    std::shared_ptr<MYSQL_STMT> _stmt;
 
     std::vector<value> _params;
-
+    std::vector<details::var_bind> _var_bindings;
 
     std::vector<unsigned long> _lengths;
     std::vector<my_bool> _nulls;
     std::vector<blob> _buffers;
     std::vector<enum_field_types> _types;
 
+    int parameter_binding_position(const std::string& name) const;
+    int parameter_binding_position(unsigned int index) const;
+
 public:
-    statement(std::shared_ptr<mysql_statement> stmt):
-    _stmt(stmt)
+    statement(std::shared_ptr<mysql_statement> stmt, std::vector<details::var_bind>&& var_binds):
+    _stmt(stmt),
+    _var_bindings(std::move(var_binds))
     {}
     statement(MYSQL_STMT* stmt):
     _stmt(std::make_shared<mysql_statement>(stmt))
@@ -921,135 +931,243 @@ unsigned int statement::parameter_count() const {
 
 int statement::parameter_index(const std::string& name) const
 {
-    // Parameter names not supported for MariaDB yet
-    // TODO
+    for(const auto& bind : _var_bindings) {
+        if(bind.name == name) {
+            return bind.index;
+        }
+    }
     return -1;
 }
 
 std::string statement::parameter_name(unsigned int index) const
 {
-    // Parameter names not supported for MariaDB yet
-    // TODO
-    return "";
+    return _var_bindings.size()>index ? _var_bindings[index].name : "";
+}
+
+int statement::parameter_binding_position(const std::string& name) const
+{
+    for(const auto& bind : _var_bindings) {
+        if(bind.name == name) {
+            return bind.position;
+        }
+    }
+    return -1;
+}
+
+int statement::parameter_binding_position(unsigned int index) const
+{
+    return _var_bindings.size()>index ? _var_bindings[index].position : -1;
 }
 
 statement& statement::bind(const std::string& name, std::nullptr_t)
 {
-    // Parameter names not supported for MariaDB yet
-    // TODO
+    int idx = parameter_binding_position(name);
+    if(idx >= 0) {
+        _stmt->bind(idx, nullptr);
+        // TODO process error, throw exception
+    } else {
+        // TODO process error, throw exception
+    }
     return *this;
 }
 
 statement& statement::bind(const std::string& name, const std::string& value)
 {
-    // Parameter names not supported for MariaDB yet
-    // TODO
+    int idx = parameter_binding_position(name);
+    if(idx >= 0) {
+        _stmt->bind(idx, value);
+        // TODO process error, throw exception
+    } else {
+        // TODO process error, throw exception
+    }
     return *this;
 }
 
 statement& statement::bind(const std::string& name, const std::string_view& value)
 {
-    // Parameter names not supported for MariaDB yet
-    // TODO
+    int idx = parameter_binding_position(name);
+    if(idx >= 0) {
+        _stmt->bind(idx, value);
+        // TODO process error, throw exception
+    } else {
+        // TODO process error, throw exception
+    }
     return *this;
 }
 
 statement& statement::bind(const std::string& name, const blob& value)
 {
-    // Parameter names not supported for MariaDB yet
-    // TODO
+    int idx = parameter_binding_position(name);
+    if(idx >= 0) {
+        _stmt->bind(idx, value);
+        // TODO process error, throw exception
+    } else {
+        // TODO process error, throw exception
+    }
     return *this;
 }
 
 statement& statement::bind(const std::string& name, bool value)
 {
-    // Parameter names not supported for MariaDB yet
-    // TODO
+    int idx = parameter_binding_position(name);
+    if(idx >= 0) {
+        _stmt->bind(idx, value);
+        // TODO process error, throw exception
+    } else {
+        // TODO process error, throw exception
+    }
     return *this;
 }
 
 statement& statement::bind(const std::string& name, int value)
 {
-    // Parameter names not supported for MariaDB yet
-    // TODO
+    int idx = parameter_binding_position(name);
+    if(idx >= 0) {
+        _stmt->bind(idx, value);
+        // TODO process error, throw exception
+    } else {
+        // TODO process error, throw exception
+    }
     return *this;
 }
 
 statement& statement::bind(const std::string& name, int64_t value)
 {
-    // Parameter names not supported for MariaDB yet
-    // TODO
+    int idx = parameter_binding_position(name);
+    if(idx >= 0) {
+        _stmt->bind(idx, value);
+        // TODO process error, throw exception
+    } else {
+        // TODO process error, throw exception
+    }
     return *this;
 }
 
 statement& statement::bind(const std::string& name, double value)
 {
-    // Parameter names not supported for MariaDB yet
-    // TODO
+    int idx = parameter_binding_position(name);
+    if(idx >= 0) {
+        _stmt->bind(idx, value);
+        // TODO process error, throw exception
+    } else {
+        // TODO process error, throw exception
+    }
     return *this;
 }
 
 statement& statement::bind(const std::string& name, const value& value)
 {
-    // Parameter names not supported for MariaDB yet
-    // TODO
-//    std::visit([&](auto&& arg) {
-//        bind(name, arg);
-//    }, value);
+    std::visit([&](auto&& arg) {
+        bind(name, arg);
+    }, value);
     return *this;
 }
 
 statement& statement::bind(unsigned int index, std::nullptr_t)
 {
-    _stmt->bind(index-1, nullptr);
+    int idx = parameter_binding_position(index);
+    if(idx >= 0) {
+        _stmt->bind(idx, nullptr);
+        // TODO process error, throw exception
+    } else {
+        // TODO process error, throw exception
+    }
     return *this;
 }
 
 statement& statement::bind(unsigned int index, const std::string& value)
 {
-    _stmt->bind(index-1, value);
+    int idx = parameter_binding_position(index);
+    if(idx >= 0) {
+        _stmt->bind(idx, value);
+        // TODO process error, throw exception
+    } else {
+        // TODO process error, throw exception
+    }
     return *this;
 }
 
 statement& statement::bind(unsigned int index, const std::string_view& value)
 {
-    _stmt->bind(index-1, value);
+    int idx = parameter_binding_position(index);
+    if(idx >= 0) {
+        _stmt->bind(idx, value);
+        // TODO process error, throw exception
+    } else {
+        // TODO process error, throw exception
+    }
     return *this;
 }
 
 statement& statement::bind(unsigned int index, const blob& value)
 {
-    _stmt->bind(index-1, value);
+    int idx = parameter_binding_position(index);
+    if(idx >= 0) {
+        _stmt->bind(idx, value);
+        // TODO process error, throw exception
+    } else {
+        // TODO process error, throw exception
+    }
     return *this;
 }
 
 statement& statement::bind(unsigned int index, bool value)
 {
-    _stmt->bind(index-1, value);
+    int idx = parameter_binding_position(index);
+    if(idx >= 0) {
+        _stmt->bind(idx, value);
+        // TODO process error, throw exception
+    } else {
+        // TODO process error, throw exception
+    }
     return *this;
 }
 
 statement& statement::bind(unsigned int index, int value)
 {
-    _stmt->bind(index-1, value);
+    int idx = parameter_binding_position(index);
+    if(idx >= 0) {
+        _stmt->bind(idx, value);
+        // TODO process error, throw exception
+    } else {
+        // TODO process error, throw exception
+    }
     return *this;
 }
 
 statement& statement::bind(unsigned int index, int64_t value)
 {
-    _stmt->bind(index-1, value);
+    int idx = parameter_binding_position(index);
+    if(idx >= 0) {
+        _stmt->bind(idx, value);
+        // TODO process error, throw exception
+    } else {
+        // TODO process error, throw exception
+    }
     return *this;
 }
 
 statement& statement::bind(unsigned int index, double value)
 {
-    _stmt->bind(index-1, value);
+    int idx = parameter_binding_position(index);
+    if(idx >= 0) {
+        _stmt->bind(idx, value);
+        // TODO process error, throw exception
+    } else {
+        // TODO process error, throw exception
+    }
     return *this;
 }
 
 statement& statement::bind(unsigned int index, const value& value)
 {
-    _stmt->bind(index-1, value);
+    int idx = parameter_binding_position(index);
+    if(idx >= 0) {
+        _stmt->bind(idx, value);
+        // TODO process error, throw exception
+    } else {
+        // TODO process error, throw exception
+    }
     return *this;
 }
 
@@ -1143,8 +1261,8 @@ std::shared_ptr<connection> connection::create(const std::string& host,
     return std::make_shared<connection>(mysql);
 }
 
-std::shared_ptr<sqlcpp::statement> connection::prepare(const std::string& sql) {
-    if(sql.empty()) {
+std::shared_ptr<sqlcpp::statement> connection::prepare(const std::string& query) {
+    if(query.empty()) {
         // TODO throw connection_exception("SQL query is empty");
     }
 
@@ -1154,6 +1272,9 @@ std::shared_ptr<sqlcpp::statement> connection::prepare(const std::string& sql) {
     }
 
     MYSQL_STMT* stmt = mysql_stmt_init(_db.get());
+
+    constexpr static const char* const MYSQL_BIND_PLACEHOLDER = "?";
+    auto [req, binds] = details::query_parser::parse(query, MYSQL_BIND_PLACEHOLDER);
 
     // Force update of max_length on result set metadata fetch
     static const my_bool update_max_length = 1;
@@ -1165,7 +1286,8 @@ std::shared_ptr<sqlcpp::statement> connection::prepare(const std::string& sql) {
         return nullptr;
     }
 
-    if(mysql_stmt_prepare(stmt, sql.c_str(), sql.length())) {
+//    if(mysql_stmt_prepare(stmt, query.c_str(), query.length())) {
+    if(mysql_stmt_prepare(stmt, req.c_str(), req.length())) {
         // TODO throw an exception with mysql_error(mysql)
         // diag("Error: %s (%s: %d)", mysql_stmt_error(stmt), __FILE__, __LINE__);
         int err = mysql_errno(_db.get());
@@ -1177,7 +1299,7 @@ std::shared_ptr<sqlcpp::statement> connection::prepare(const std::string& sql) {
     auto mdb_stmt = std::make_shared<mysql_statement>(stmt);
     _last_stmt = mdb_stmt;
 
-    return std::make_shared<statement>(mdb_stmt);
+    return std::make_shared<statement>(mdb_stmt, std::move(binds));
 }
 
 std::shared_ptr<stats_result> connection::execute(const std::string& sql) {

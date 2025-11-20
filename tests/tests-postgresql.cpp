@@ -297,21 +297,21 @@ TEST_CASE("PostgreSQL Variable Binding", "[postgresql][binding]")
 
     SECTION("Bind by index")
     {
-        auto stmt = db->prepare("INSERT INTO binding_test(int_val, real_val, text_val, blob_val, bool_val) VALUES($1, $2, $3, $4, $5)");
+        auto stmt = db->prepare("INSERT INTO binding_test(int_val, real_val, text_val, blob_val, bool_val) VALUES(?, :, @, $, ?)");
         REQUIRE( !!stmt );
 
-        stmt->bind(1, static_cast<int64_t>(42));
-        stmt->bind(2, 3.14);
-        stmt->bind(3, std::string("test"));
-        stmt->bind(4, sqlcpp::blob{0x01, 0x02, 0x03});
-        stmt->bind(5, true);
+        stmt->bind(0, static_cast<int64_t>(42));
+        stmt->bind(1, 3.14);
+        stmt->bind(2, std::string("test"));
+        stmt->bind(3, sqlcpp::blob{0x01, 0x02, 0x03});
+        stmt->bind(4, true);
 
         auto result = stmt->execute();
         REQUIRE( !!result );
 
         // Verify inserted data
         auto select_stmt = db->prepare("SELECT int_val, real_val, text_val, blob_val, bool_val FROM binding_test WHERE id = $1");
-        select_stmt->bind(1, static_cast<int64_t>(1));
+        select_stmt->bind(1, 1);
         auto rset = select_stmt->execute();
         REQUIRE( !!rset );
 
@@ -328,22 +328,14 @@ TEST_CASE("PostgreSQL Variable Binding", "[postgresql][binding]")
     SECTION("Bind by name")
     {
         // Note: Not implemented yet for PostgreSQL - using positional parameters
-        auto stmt = db->prepare("INSERT INTO binding_test(int_val, real_val, text_val, blob_val, bool_val) VALUES($1, $2, $3, $4, $5)");
+        auto stmt = db->prepare("INSERT INTO binding_test(int_val, real_val, text_val, blob_val, bool_val) VALUES(:int_val, ?real_val, @text_val, $blob_val, :bool_val)");
         REQUIRE( !!stmt );
 
-        // Note: Named binding not implemented yet for PostgreSQL
-        // stmt->bind("int_val", static_cast<int64_t>(100));
-        // stmt->bind("real_val", 2.71);
-        // stmt->bind("text_val", std::string("named"));
-        // stmt->bind("blob_val", sqlcpp::blob{0xAA, 0xBB});
-        // stmt->bind("bool_val", false);
-
-        // Using positional binding instead
-        stmt->bind(1, static_cast<int64_t>(100));
-        stmt->bind(2, 2.71);
-        stmt->bind(3, std::string("named"));
-        stmt->bind(4, sqlcpp::blob{0xAA, 0xBB});
-        stmt->bind(5, false);
+        stmt->bind("int_val", static_cast<int64_t>(100));
+        stmt->bind("real_val", 2.71);
+        stmt->bind("text_val", std::string("named"));
+        stmt->bind("blob_val", sqlcpp::blob{0xAA, 0xBB});
+        stmt->bind("bool_val", false);
 
         auto result = stmt->execute();
         REQUIRE( !!result );
@@ -366,13 +358,13 @@ TEST_CASE("PostgreSQL Variable Binding", "[postgresql][binding]")
 
     SECTION("Bind NULL values")
     {
-        auto stmt = db->prepare("INSERT INTO binding_test(int_val, real_val, text_val, blob_val) VALUES($1, $2, $3, $4)");
+        auto stmt = db->prepare("INSERT INTO binding_test(int_val, real_val, text_val, blob_val) VALUES($, $, $, $)");
         REQUIRE( !!stmt );
 
+        stmt->bind_null(0);
         stmt->bind_null(1);
         stmt->bind_null(2);
         stmt->bind_null(3);
-        stmt->bind_null(4);
 
         auto result = stmt->execute();
         REQUIRE( !!result );
@@ -393,21 +385,21 @@ TEST_CASE("PostgreSQL Variable Binding", "[postgresql][binding]")
 
     SECTION("Multiple executions with different bindings")
     {
-        auto stmt = db->prepare("INSERT INTO binding_test(int_val, text_val) VALUES($1, $2)");
+        auto stmt = db->prepare("INSERT INTO binding_test(int_val, text_val) VALUES(?, ?)");
         REQUIRE( !!stmt );
 
         // First execution
-        stmt->bind(1, static_cast<int64_t>(1));
-        stmt->bind(2, std::string("first"));
+        stmt->bind(0, static_cast<int64_t>(1));
+        stmt->bind(1, std::string("first"));
         stmt->execute();
 
         // Second execution with different values
-        stmt->bind(1, static_cast<int64_t>(2));
-        stmt->bind(2, std::string("second"));
+        stmt->bind(0, static_cast<int64_t>(2));
+        stmt->bind(1, std::string("second"));
         stmt->execute();
 
         // Verify both rows
-        auto select_stmt = db->prepare("SELECT COUNT(*) FROM binding_test WHERE int_val IN ($1, $2)");
+        auto select_stmt = db->prepare("SELECT COUNT(*) FROM binding_test WHERE int_val IN (:1, $2)");
         select_stmt->bind(1, static_cast<int64_t>(1));
         select_stmt->bind(2, static_cast<int64_t>(2));
         auto rset = select_stmt->execute();
@@ -420,23 +412,23 @@ TEST_CASE("PostgreSQL Variable Binding", "[postgresql][binding]")
 
     SECTION("Bind different integer types")
     {
-        auto stmt = db->prepare("INSERT INTO binding_test(int_val) VALUES($1)");
+        auto stmt = db->prepare("INSERT INTO binding_test(int_val) VALUES(?)");
         REQUIRE( !!stmt );
 
         // Test int
-        stmt->bind(1, 123);
+        stmt->bind(0, 123);
         stmt->execute();
 
         // Test int64_t
-        stmt->bind(1, static_cast<int64_t>(456));
+        stmt->bind(0, static_cast<int64_t>(456));
         stmt->execute();
 
         // Test int32_t
-        stmt->bind(1, static_cast<int32_t>(789));
+        stmt->bind(0, static_cast<int32_t>(789));
         stmt->execute();
 
         // Verify all values
-        auto select_stmt = db->prepare("SELECT COUNT(*) FROM binding_test WHERE int_val IN ($1, $2, $3)");
+        auto select_stmt = db->prepare("SELECT COUNT(*) FROM binding_test WHERE int_val IN (?1, $2, :3)");
         select_stmt->bind(1, 123);
         select_stmt->bind(2, static_cast<int64_t>(456));
         select_stmt->bind(3, static_cast<int32_t>(789));
@@ -451,3 +443,4 @@ TEST_CASE("PostgreSQL Variable Binding", "[postgresql][binding]")
     // Cleanup
     db->execute("DROP TABLE binding_test;");
 }
+

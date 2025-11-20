@@ -101,3 +101,9 @@ coverage/
 
 # Static analysis
 cppcheck-report.xml
+
+# Debian packaging
+debian/.debhelper/
+debian/tmp/
+debian/libsqlcpp/
+debian/libsqlcpp-*/

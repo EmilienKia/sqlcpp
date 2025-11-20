@@ -217,5 +217,70 @@ public:
     std::shared_ptr<connection> create_connection(const std::string_view& url);
 };
 
+
+
+
+struct var_bind
+{
+    // Name of the variable, empty if not named
+    std::string name;
+    // Index of the variable given by the user
+    int index = -1;
+    // Position of the variable in the generated query string, -1 if not usable
+    int position = -1;
+
+    bool operator==(const var_bind& other) const {
+        return name == other.name && index == other.index && position == other.position;
+    }
+
+    bool operator!=(const var_bind& other) const {
+        return name != other.name || index != other.index || position != other.position;
+    }
+
+};
+
+
+class query_parser
+{
+public:
+    query_parser() = delete;
+
+    struct part {
+        enum type {
+            TEXT,
+            VARIABLE
+        } type;
+        std::string content;
+        int index;
+
+        bool operator==(const part& other) const {
+            return type == other.type && content == other.content && index == other.index;
+        }
+    };
+
+    static std::vector<part> split(const std::string& query);
+
+    typedef std::function<std::string()> symbol_generator;
+
+    static std::pair<std::string, std::vector<var_bind>> parse(const std::string& query, symbol_generator symbol);
+
+    static std::pair<std::string, std::vector<var_bind>> parse(const std::string& query, const std::string& symbol) {
+        return parse(query, [symbol]() { return symbol; });
+    }
+
+    static std::pair<std::string, std::vector<var_bind>> parse(const std::string& query, const std::string& symbol, int start_index) {
+        struct symb_gen {
+            std::string symbol ;
+            int index;
+            std::string operator()() { return symbol + std::to_string(index++); }
+        };
+        return parse(query, symb_gen{symbol, start_index});
+    }
+
+
+};
+
+
+
 }
 #endif //SQLCPP_DETAILS_HPP

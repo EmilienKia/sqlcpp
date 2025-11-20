@@ -317,13 +317,16 @@ class statement : public sqlcpp::statement
 protected:
     std::shared_ptr<sqlite3_stmt> _stmt;
 
-public:
-    explicit statement(std::shared_ptr<sqlite3_stmt> stmt) :
-        _stmt(stmt)
-        {}
+    std::vector<details::var_bind> _var_bindings;
 
-    explicit statement(sqlite3_stmt* stmt) :
-        statement(std::shared_ptr<sqlite3_stmt>(stmt, sqlite3_finalize))
+    int parameter_binding_position(const std::string& name) const;
+    int parameter_binding_position(unsigned int index) const;
+
+public:
+
+    explicit statement(sqlite3_stmt* stmt, std::vector<details::var_bind>&& var_binds ) :
+        _stmt(std::shared_ptr<sqlite3_stmt>(stmt, sqlite3_finalize)),
+        _var_bindings(var_binds)
         {}
 
     virtual ~statement() {}
@@ -491,24 +494,43 @@ std::shared_ptr<sqlcpp::buffered_resultset> statement::execute_buffered()
 
 unsigned int statement::parameter_count() const
 {
-    return sqlite3_bind_parameter_count(_stmt.get());
+    return _var_bindings.size();
 }
 
 int statement::parameter_index(const std::string& name) const 
 {
-    // NOTE : in SQLite, index start at 1, not 0
-    return sqlite3_bind_parameter_index(_stmt.get(), name.c_str()) - 1;
+    for(const auto& bind : _var_bindings) {
+        if(bind.name == name) {
+            return bind.index;
+        }
+    }
+    return -1;
 }
 
 std::string statement::parameter_name(unsigned int index) const 
 {
-    // NOTE : in SQLite, index start at 1, not 0
-    return sqlite3_bind_parameter_name(_stmt.get(), index + 1);
+    return _var_bindings.size()>index ? _var_bindings[index].name : "";
 }
+
+int statement::parameter_binding_position(const std::string& name) const
+{
+    for(const auto& bind : _var_bindings) {
+        if(bind.name == name) {
+            return bind.position;
+        }
+    }
+    return -1;
+}
+
+int statement::parameter_binding_position(unsigned int index) const
+{
+    return _var_bindings.size()>index ? _var_bindings[index].position : -1;
+}
+
 
 statement& statement::bind(const std::string& name, std::nullptr_t) 
 {
-    int idx = parameter_index(name);
+    int idx = parameter_binding_position(name);
     if(idx >= 0) {
         sqlite3_bind_null(_stmt.get(), idx+1);
         // TODO process error, throw exception
@@ -520,7 +542,7 @@ statement& statement::bind(const std::string& name, std::nullptr_t)
 
 statement& statement::bind(const std::string& name, const std::string& value)
 {
-    int idx = parameter_index(name);
+    int idx = parameter_binding_position(name);
     if(idx >= 0) {
         sqlite3_bind_text(_stmt.get(), idx+1, value.c_str(), value.size(), SQLITE_TRANSIENT);
         // TODO process error, throw exception
@@ -532,7 +554,7 @@ statement& statement::bind(const std::string& name, const std::string& value)
 
 statement& statement::bind(const std::string& name, const std::string_view& value)
 {
-    int idx = parameter_index(name);
+    int idx = parameter_binding_position(name);
     if(idx >= 0) {
         sqlite3_bind_text(_stmt.get(), idx+1, value.data(), value.size(), SQLITE_TRANSIENT);
         // TODO process error, throw exception
@@ -544,7 +566,7 @@ statement& statement::bind(const std::string& name, const std::string_view& valu
 
 statement& statement::bind(const std::string& name, const blob& value) 
 {
-    int idx = parameter_index(name);
+    int idx = parameter_binding_position(name);
     if(idx >= 0) {
         sqlite3_bind_blob(_stmt.get(), idx+1, value.data(), value.size(), SQLITE_TRANSIENT);
         // TODO process error, throw exception
@@ -556,7 +578,7 @@ statement& statement::bind(const std::string& name, const blob& value)
 
 statement& statement::bind(const std::string& name, bool value)
 {
-    int idx = parameter_index(name);
+    int idx = parameter_binding_position(name);
     if(idx >= 0) {
         sqlite3_bind_int(_stmt.get(), idx+1, value ? 1 : 0);
         // TODO process error, throw exception
@@ -568,7 +590,7 @@ statement& statement::bind(const std::string& name, bool value)
 
 statement& statement::bind(const std::string& name, int value)
 {
-    int idx = parameter_index(name);
+    int idx = parameter_binding_position(name);
     if(idx >= 0) {
         sqlite3_bind_int(_stmt.get(), idx+1, value);
         // TODO process error, throw exception
@@ -580,7 +602,7 @@ statement& statement::bind(const std::string& name, int value)
 
 statement& statement::bind(const std::string& name, int64_t value)  
 {
-    int idx = parameter_index(name);
+    int idx = parameter_binding_position(name);
     if(idx >= 0) {
         sqlite3_bind_int64(_stmt.get(), idx+1, value);
         // TODO process error, throw exception
@@ -592,7 +614,7 @@ statement& statement::bind(const std::string& name, int64_t value)
 
 statement& statement::bind(const std::string& name, double value)  
 {
-    int idx = parameter_index(name);
+    int idx = parameter_binding_position(name);
     if(idx >= 0) {
         sqlite3_bind_double(_stmt.get(), idx+1, value);
         // TODO process error, throw exception
@@ -612,57 +634,97 @@ statement& statement::bind(const std::string& name, const value& value)
 
 statement& statement::bind(unsigned int index, std::nullptr_t)  
 {
-    sqlite3_bind_null(_stmt.get(), index + 1);
-    // TODO process error, throw exception
+    int idx = parameter_binding_position(index);
+    if(idx >= 0) {
+        sqlite3_bind_null(_stmt.get(), idx+1);
+        // TODO process error, throw exception
+    } else {
+        // TODO process error, throw exception
+    }
     return *this;
 }
 
 statement& statement::bind(unsigned int index, const std::string& value)  
 {
-    sqlite3_bind_text(_stmt.get(), index + 1, value.c_str(), value.size(), SQLITE_TRANSIENT);
-    // TODO process error, throw exception
+    int idx = parameter_binding_position(index);
+    if(idx >= 0) {
+        sqlite3_bind_text(_stmt.get(), idx+1, value.c_str(), value.size(), SQLITE_TRANSIENT);
+        // TODO process error, throw exception
+    } else {
+        // TODO process error, throw exception
+    }
     return *this;
 }
 
 statement& statement::bind(unsigned int index, const std::string_view& value)  
 {
-    sqlite3_bind_text(_stmt.get(), index + 1, value.data(), value.size(), SQLITE_TRANSIENT);
-    // TODO process error, throw exception
+    int idx = parameter_binding_position(index);
+    if(idx >= 0) {
+        sqlite3_bind_text(_stmt.get(), idx+1, value.data(), value.size(), SQLITE_TRANSIENT);
+        // TODO process error, throw exception
+    } else {
+        // TODO process error, throw exception
+    }
     return *this;
 }
 
 statement& statement::bind(unsigned int index, const blob& value)  
 {
-    sqlite3_bind_blob(_stmt.get(), index + 1, value.data(), value.size(), SQLITE_TRANSIENT);
-    // TODO process error, throw exception
+    int idx = parameter_binding_position(index);
+    if(idx >= 0) {
+        sqlite3_bind_blob(_stmt.get(), idx+1, value.data(), value.size(), SQLITE_TRANSIENT);
+        // TODO process error, throw exception
+    } else {
+        // TODO process error, throw exception
+    }
     return *this;
 }
 
 statement& statement::bind(unsigned int index, bool value)
 {
-    sqlite3_bind_int(_stmt.get(), index + 1, value ? 1 : 0);
-    // TODO process error, throw exception
+    int idx = parameter_binding_position(index);
+    if(idx >= 0) {
+        sqlite3_bind_int(_stmt.get(), idx+1, value ? 1 : 0);
+        // TODO process error, throw exception
+    } else {
+        // TODO process error, throw exception
+    }
     return *this;
 }
 
 statement& statement::bind(unsigned int index, int value)
 {
-    sqlite3_bind_int(_stmt.get(), index + 1, value);
-    // TODO process error, throw exception
+    int idx = parameter_binding_position(index);
+    if(idx >= 0) {
+        sqlite3_bind_int(_stmt.get(), idx+1, value);
+        // TODO process error, throw exception
+    } else {
+        // TODO process error, throw exception
+    }
     return *this;
 }
 
 statement& statement::bind(unsigned int index, int64_t value)  
 {
-    sqlite3_bind_int64(_stmt.get(), index + 1, value);
-    // TODO process error, throw exception
+    int idx = parameter_binding_position(index);
+    if(idx >= 0) {
+        sqlite3_bind_int64(_stmt.get(), idx+1, value);
+        // TODO process error, throw exception
+    } else {
+        // TODO process error, throw exception
+    }
     return *this;
 }
 
 statement& statement::bind(unsigned int index, double value)  
 {
-    sqlite3_bind_double(_stmt.get(), index + 1, value);
-    // TODO process error, throw exception
+    int idx = parameter_binding_position(index);
+    if(idx >= 0) {
+        sqlite3_bind_double(_stmt.get(), idx+1, value);
+        // TODO process error, throw exception
+    } else {
+        // TODO process error, throw exception
+    }
     return *this;
 }
 
@@ -724,15 +786,17 @@ std::shared_ptr<stats_result> connection::execute(const std::string& query)
 
 std::shared_ptr<sqlcpp::statement> connection::prepare(const std::string& query)
 {
+    constexpr static const char* const SQLITE_BIND_PLACEHOLDER = "?";
+    auto [req, binds] = details::query_parser::parse(query, SQLITE_BIND_PLACEHOLDER);
     int rc;
     sqlite3_stmt* res;
-    rc = sqlite3_prepare_v2(_db, query.c_str(), query.size(), &res, 0);
+    rc = sqlite3_prepare_v2(_db, req.c_str(), req.size(), &res, 0);
     if (rc != SQLITE_OK) {
         std::cerr << "Failed to execute statement (" << rc << "): " << sqlite3_errmsg(_db) << std::endl;
         // TODO throw exception
         return {};
     }
-    return std::make_shared<statement>(res);
+    return std::make_shared<statement>(res, std::move(binds));
 }
 
 //

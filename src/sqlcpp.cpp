@@ -24,6 +24,7 @@
 #include <filesystem>
 #include <stdexcept>
 #include <iostream>
+#include <regex>
 #include <dlfcn.h>
 
 namespace fs = std::filesystem;
@@ -612,6 +613,81 @@ const row& resultset_row_iterator::operator->() const
     } else {
         throw std::runtime_error("Invalid iterator");
     }
+}
+
+
+
+
+//
+// query_parser
+//
+std::vector<details::query_parser::part> details::query_parser::split(const std::string& query)
+{
+    static const char* pattern =
+            "[^:?@$\"']+"                               // Normal characters
+        "|" "(?:\\\"(?:(?:\\\\\\\")|[^\\\"])*\\\")"     // "-based strings
+        "|" "(?:\\'(?:(?:\\\\\\')|[^\\'])*\\')"         // '-based strings
+        "|" "([:?@$](?:[0-9a-zA-Z][0-9a-zA-Z-_]*)?)";   // Real variable declaration
+    static const std::regex pattern_regex(pattern, std::regex::optimize);
+
+    std::vector<details::query_parser::part> res;
+
+    std::smatch match;
+    std::string rest = query;
+    while (std::regex_search(rest, match, pattern_regex)) {
+        std::string str = match.str();
+        if (!str.empty()) {
+            switch(str[0]) {
+                case ':':
+                case '?':
+                case '@':
+                case '$':
+                    if (str.size()==1) {
+                        res.push_back({part::VARIABLE, "", -1});
+                    } else {
+                        std::string var = str.substr(1);
+                        if (std::all_of(var.begin(), var.end(), [](char c) { return std::isdigit(c); })) {
+                            res.push_back({part::VARIABLE, "", std::stoi(var)});
+                        } else {
+                            res.push_back({part::VARIABLE, var, -1});
+                        }
+                    }
+                    break;
+                default:
+                    res.push_back({part::TEXT, str, -1});
+                    break;
+            }
+        }
+        rest = match.suffix().str();
+    }
+
+    return res;
+}
+
+std::pair<std::string, std::vector<details::var_bind>> details::query_parser::parse(const std::string& query, symbol_generator symbol)
+{
+    std::vector<details::query_parser::part> parts = details::query_parser::split(query);
+    std::ostringstream oss;
+    std::vector<details::var_bind> binds;
+    int count = 0;
+    for (const auto& part : parts) {
+        if(part.type==details::query_parser::part::TEXT) {
+            oss << part.content;
+        } else if(!part.content.empty()) {
+            binds.push_back({ part.content, (int)binds.size(), count++ });
+            oss << symbol();
+        } else if (part.index==-1) {
+            binds.push_back({ {}, (int)binds.size(), count++ });
+            oss << symbol();
+        } else {
+            while (part.index > binds.size()) {
+                binds.push_back({ {}, (int)binds.size(), -1 });
+            }
+            binds.push_back({ {}, (int)binds.size(), count++ });
+            oss << symbol();
+        }
+    }
+    return {oss.str(), binds};
 }
 
 } // namespace sqlcpp

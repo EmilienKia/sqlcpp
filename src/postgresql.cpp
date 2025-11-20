@@ -560,12 +560,16 @@ protected:
     std::string _stmt_name;
     mutable std::shared_ptr<PGresult> _stmt_info;
     std::vector<value> _params;
+    std::vector<details::var_bind> _var_bindings;
 
     PGresult* execute_prepared();
 
+    int parameter_binding_position(const std::string& name) const;
+    int parameter_binding_position(unsigned int index) const;
+
 public:
-    explicit statement(std::shared_ptr<PGconn> db, const std::string& stmt_name) :
-        _db(db), _stmt_name(stmt_name)
+    explicit statement(std::shared_ptr<PGconn> db, const std::string& stmt_name, std::vector<details::var_bind>&& var_bindings) :
+        _db(db), _stmt_name(stmt_name), _var_bindings(var_bindings)
         {}
 
     virtual ~statement() {}
@@ -608,7 +612,7 @@ PGresult* statement::execute_prepared()
     std::vector<const char*> rc;
     rc.reserve(sz);
 
-    for(int i=1; i<sz; i++) {
+    for(int i=0; i<sz; i++) {
         const auto& v = _params[i];
         std::visit([&](auto&& arg) {
             using T = std::decay_t<decltype(arg)>;
@@ -724,95 +728,37 @@ std::shared_ptr<sqlcpp::buffered_resultset> statement::execute_buffered()
 
 unsigned int statement::parameter_count() const
 {
-    if(!_stmt_info) {
-        PGresult* res = PQdescribePrepared(_db.lock().get(), _stmt_name.c_str());
-        if(PQresultStatus(_stmt_info.get()) != PGRES_COMMAND_OK) {
-            // TODO process error, throw exception
-            return 0;
-        }
-        _stmt_info = std::shared_ptr<PGresult>(res , PQclear);
-    }
-    return PQnparams(_stmt_info.get());
+    return _var_bindings.size();
 }
 
 int statement::parameter_index(const std::string& name) const 
 {
-    // Parameter names not supported for PostgreSQL yet
-    // TODO
+    for(const auto& bind : _var_bindings) {
+        if(bind.name == name) {
+            return bind.index;
+        }
+    }
     return -1;
 }
 
 std::string statement::parameter_name(unsigned int index) const 
 {
-    // Parameter names not supported for PostgreSQL yet
-    // TODO
-    return "";
+    return _var_bindings.size()>index ? _var_bindings[index].name : "";
 }
 
-statement& statement::bind(const std::string& name, std::nullptr_t) 
+int statement::parameter_binding_position(const std::string& name) const
 {
-    // Parameter names not supported for PostgreSQL yet
-    // TODO
-    return *this;
+    for(const auto& bind : _var_bindings) {
+        if(bind.name == name) {
+            return bind.position;
+        }
+    }
+    return -1;
 }
 
-statement& statement::bind(const std::string& name, const std::string& value)
+int statement::parameter_binding_position(unsigned int index) const
 {
-    // Parameter names not supported for PostgreSQL yet
-    // TODO
-    return *this;
-}
-
-statement& statement::bind(const std::string& name, const std::string_view& value)
-{
-    // Parameter names not supported for PostgreSQL yet
-    // TODO
-    return *this;
-}
-
-statement& statement::bind(const std::string& name, const blob& value) 
-{
-    // Parameter names not supported for PostgreSQL yet
-    // TODO
-    return *this;
-}
-
-statement& statement::bind(const std::string& name, bool value)
-{
-    // Parameter names not supported for PostgreSQL yet
-    // TODO
-    return *this;
-}
-
-statement& statement::bind(const std::string& name, int value)
-{
-    // Parameter names not supported for PostgreSQL yet
-    // TODO
-    return *this;
-}
-
-statement& statement::bind(const std::string& name, int64_t value)  
-{
-    // Parameter names not supported for PostgreSQL yet
-    // TODO
-    return *this;
-}
-
-statement& statement::bind(const std::string& name, double value)  
-{
-    // Parameter names not supported for PostgreSQL yet
-    // TODO
-    return *this;
-}
-
-statement& statement::bind(const std::string& name, const value& value)  
-{
-    // Parameter names not supported for PostgreSQL yet
-    // TODO
-//    std::visit([&](auto&& arg) {
-//        bind(name, arg);
-//    }, value);
-    return *this;
+    return _var_bindings.size()>index ? _var_bindings[index].position : -1;
 }
 
 static inline std::vector<value>& ensure(std::vector<value>& params, unsigned int index)
@@ -823,60 +769,202 @@ static inline std::vector<value>& ensure(std::vector<value>& params, unsigned in
     return params;
 }
 
+statement& statement::bind(const std::string& name, std::nullptr_t) 
+{
+    int idx = parameter_binding_position(name);
+    if(idx >= 0) {
+        ensure(_params, idx)[idx] = nullptr;
+        // TODO process error, throw exception
+    } else {
+        // TODO process error, throw exception
+    }
+    return *this;
+}
+
+statement& statement::bind(const std::string& name, const std::string& value)
+{
+    int idx = parameter_binding_position(name);
+    if(idx >= 0) {
+        ensure(_params, idx)[idx] = value;
+        // TODO process error, throw exception
+    } else {
+        // TODO process error, throw exception
+    }
+    return *this;
+}
+
+statement& statement::bind(const std::string& name, const std::string_view& value)
+{
+    int idx = parameter_binding_position(name);
+    if(idx >= 0) {
+        ensure(_params, idx)[idx] = std::string(value);
+        // TODO process error, throw exception
+    } else {
+        // TODO process error, throw exception
+    }
+    return *this;
+}
+
+statement& statement::bind(const std::string& name, const blob& value) 
+{
+    int idx = parameter_binding_position(name);
+    if(idx >= 0) {
+        ensure(_params, idx)[idx] = value;
+        // TODO process error, throw exception
+    } else {
+        // TODO process error, throw exception
+    }
+    return *this;
+}
+
+statement& statement::bind(const std::string& name, bool value)
+{
+    int idx = parameter_binding_position(name);
+    if(idx >= 0) {
+        ensure(_params, idx)[idx] = value;
+        // TODO process error, throw exception
+    } else {
+        // TODO process error, throw exception
+    }
+    return *this;
+}
+
+statement& statement::bind(const std::string& name, int value)
+{
+    int idx = parameter_binding_position(name);
+    if(idx >= 0) {
+        ensure(_params, idx)[idx] = value;
+        // TODO process error, throw exception
+    } else {
+        // TODO process error, throw exception
+    }
+    return *this;
+}
+
+statement& statement::bind(const std::string& name, int64_t value)  
+{
+    int idx = parameter_binding_position(name);
+    if(idx >= 0) {
+        ensure(_params, idx)[idx] = value;
+        // TODO process error, throw exception
+    } else {
+        // TODO process error, throw exception
+    }
+    return *this;
+}
+
+statement& statement::bind(const std::string& name, double value)  
+{
+    int idx = parameter_binding_position(name);
+    if(idx >= 0) {
+        ensure(_params, idx)[idx] = value;
+        // TODO process error, throw exception
+    } else {
+        // TODO process error, throw exception
+    }
+    return *this;
+}
+
+statement& statement::bind(const std::string& name, const value& value) {
+    std::visit([&](auto&& arg) {
+        bind(name, arg);
+    }, value);
+    return *this;
+}
 
 statement& statement::bind(unsigned int index, std::nullptr_t)  
 {
-    ensure(_params, index)[index] = nullptr;
-    // TODO process error, throw exception
+    int idx = parameter_binding_position(index);
+    if(idx >= 0) {
+        ensure(_params, idx)[idx] = nullptr;
+        // TODO process error, throw exception
+    } else {
+        // TODO process error, throw exception
+    }
     return *this;
 }
 
 statement& statement::bind(unsigned int index, const std::string& value)  
 {
-    ensure(_params, index)[index] = value;
-    // TODO process error, throw exception
+    int idx = parameter_binding_position(index);
+    if(idx >= 0) {
+        ensure(_params, idx)[idx] = value;
+        // TODO process error, throw exception
+    } else {
+        // TODO process error, throw exception
+    }
     return *this;
 }
 
 statement& statement::bind(unsigned int index, const std::string_view& value)  
 {
-    ensure(_params, index)[index] = std::string(value);
-    // TODO process error, throw exception
+    int idx = parameter_binding_position(index);
+    if(idx >= 0) {
+        ensure(_params, idx)[idx] = std::string(value);
+        // TODO process error, throw exception
+    } else {
+        // TODO process error, throw exception
+    }
     return *this;
 }
 
 statement& statement::bind(unsigned int index, const blob& value)  
 {
-    ensure(_params, index)[index] = value;
-    // TODO process error, throw exception
+    int idx = parameter_binding_position(index);
+    if(idx >= 0) {
+        ensure(_params, idx)[idx] = value;
+        // TODO process error, throw exception
+    } else {
+        // TODO process error, throw exception
+    }
     return *this;
 }
 
 statement& statement::bind(unsigned int index, bool value)
 {
-    ensure(_params, index)[index] = value;
-    // TODO process error, throw exception
+    int idx = parameter_binding_position(index);
+    if(idx >= 0) {
+        ensure(_params, idx)[idx] = value;
+        // TODO process error, throw exception
+    } else {
+        // TODO process error, throw exception
+    }
     return *this;
 }
 
 statement& statement::bind(unsigned int index, int value)
 {
-    ensure(_params, index)[index] = value;
-    // TODO process error, throw exception
+    int idx = parameter_binding_position(index);
+    if(idx >= 0) {
+        ensure(_params, idx)[idx] = value;
+        // TODO process error, throw exception
+    } else {
+        // TODO process error, throw exception
+    }
     return *this;
 }
 
 statement& statement::bind(unsigned int index, int64_t value)  
 {
-    ensure(_params, index)[index] = value;
-    // TODO process error, throw exception
+    int idx = parameter_binding_position(index);
+    if(idx >= 0) {
+        ensure(_params, idx)[idx] = value;
+        // TODO process error, throw exception
+    } else {
+        // TODO process error, throw exception
+    }
     return *this;
 }
 
 statement& statement::bind(unsigned int index, double value)  
 {
-    ensure(_params, index)[index] = value;
-    // TODO process error, throw exception
+    int idx = parameter_binding_position(index);
+    if(idx >= 0) {
+        ensure(_params, idx)[idx] = value;
+        // TODO process error, throw exception
+    } else {
+        // TODO process error, throw exception
+    }
     return *this;
 }
 
@@ -937,15 +1025,18 @@ std::shared_ptr<stats_result> connection::execute(const std::string& query)
 
 std::shared_ptr<sqlcpp::statement> connection::prepare(const std::string& query)
 {
+    constexpr static const char* const POSTGRES_BIND_PLACEHOLDER = "$";
+    constexpr static int POSTGRES_BIND_PLACEHOLDER_START_INDEX = 1;
+    auto [req, binds] = details::query_parser::parse(query, POSTGRES_BIND_PLACEHOLDER, POSTGRES_BIND_PLACEHOLDER_START_INDEX);
     static unsigned int count = 0;
     std::ostringstream oss;
     oss << "prepared-" << count++;
-    std::string stmt_name = oss.str(); // TODO Generate a unique statement name
-    PGresult* res = PQprepare(_db.get(), stmt_name.c_str(), query.c_str(), 0, nullptr);
+    std::string stmt_name = oss.str();
+    PGresult* res = PQprepare(_db.get(), stmt_name.c_str(), req.c_str(), 0, nullptr);
     switch(PQresultStatus(res)) {
         case PGRES_COMMAND_OK:
             PQclear(res);
-            return std::make_shared<statement>(_db, stmt_name);
+            return std::make_shared<statement>(_db, stmt_name, std::move(binds));
         default:
             std::cerr << "Failed to prepare statement: " << PQerrorMessage(_db.get()) << std::endl;
             PQclear(res);

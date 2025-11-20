@@ -6,6 +6,7 @@ add_executable(unit-tests
         tests-sqlite.cpp
         tests-postgresql.cpp
         tests-mariadb.cpp
+        tests-helpers.cpp
 )
 target_link_libraries(unit-tests sqlcpp sqlcpp-sqlite sqlcpp-postgresql sqlcpp-mariadb)
 add_test(NAME unit-tests COMMAND unit-tests)
