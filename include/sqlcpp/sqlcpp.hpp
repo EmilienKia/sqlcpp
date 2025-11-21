@@ -40,6 +40,28 @@ class buffered_resultset;
 class resultset_row_iterator;
 class resultset_row_iterator_impl;
 class row_base;
+class exception;
+
+class exception : public std::exception
+{
+protected:
+    int _err_code = -1;
+    std::string _err_msg = "";
+
+public:
+    exception() = default;
+    explicit exception(int err_code) : _err_code(err_code) {}
+    explicit exception(const std::string& err_msg) : _err_msg(err_msg) {}
+    exception(int err_code, const std::string& err_msg) : _err_code(err_code), _err_msg(err_msg) {}
+    exception(const exception&) = default;
+    exception& operator=(const exception&) = default;
+    ~exception() override = default;
+
+    int err_code() const { return _err_code; }
+    const std::string& err_msg() const { return _err_msg; }
+
+    const char* what() const noexcept override { return _err_msg.c_str(); }
+};
 
 class connection
 {

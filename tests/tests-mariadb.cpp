@@ -357,10 +357,10 @@ TEST_CASE("MariaDB Variable Binding", "[mariadb][binding]")
         auto stmt = db->prepare("INSERT INTO binding_test(int_val, real_val, text_val, blob_val) VALUES(?, ?, ?, ?)");
         REQUIRE( !!stmt );
 
+        stmt->bind_null(0);
         stmt->bind_null(1);
         stmt->bind_null(2);
         stmt->bind_null(3);
-        stmt->bind_null(4);
 
         auto result = stmt->execute();
         REQUIRE( !!result );

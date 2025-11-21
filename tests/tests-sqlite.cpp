@@ -396,6 +396,8 @@ TEST_CASE("SQLite Variable Binding", "[sqlite][binding]")
         stmt->bind(1, std::string("first"));
         stmt->execute();
 
+        // TODO Remove the second prepare to reuse prepared statements
+        stmt = db->prepare("INSERT INTO binding_test(int_val, text_val) VALUES(?, ?)");
         // Second execution with different values
         stmt->bind(0, static_cast<int64_t>(2));
         stmt->bind(1, std::string("second"));
@@ -423,10 +425,14 @@ TEST_CASE("SQLite Variable Binding", "[sqlite][binding]")
         stmt->execute();
 
         // Test int64_t
+        // TODO Remove the second prepare to reuse prepared statements
+        stmt = db->prepare("INSERT INTO binding_test(int_val) VALUES(?)");
         stmt->bind(0, static_cast<int64_t>(456));
         stmt->execute();
 
         // Test int32_t
+        // TODO Remove the second prepare to reuse prepared statements
+        stmt = db->prepare("INSERT INTO binding_test(int_val) VALUES(?)");
         stmt->bind(0, static_cast<int32_t>(789));
         stmt->execute();
 

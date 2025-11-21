@@ -201,11 +201,6 @@ public:
     ~mysql_statement() {
         close();
         for(auto& bind : _binds) {
-            /*
-                    if(bind.buffer!=nullptr) {
-                        delete[] static_cast<char *>(bind.buffer);
-                    }
-            */
             bind = bind0;
         }
     }
@@ -325,7 +320,7 @@ void mysql_statement::store_all_results()
         if(mysql_stmt_store_result(_stmt.get())!=0) {
             int err = mysql_stmt_errno(_stmt.get());
             const char* errstr = mysql_stmt_error(_stmt.get());
-            std::cout << "Error store results: " << err << " - " << errstr << std::endl;
+            throw sqlcpp::exception(err, "Error storing all results: " + std::string(errstr));
         }
     }
 }
@@ -348,8 +343,7 @@ void mysql_statement::prepare_buffers()
             }
             int err = mysql_stmt_errno(_stmt.get());
             const char* errstr = mysql_stmt_error(_stmt.get());
-
-            std::cout << "Error retrieving metadata: " << err << " - " << errstr << std::endl;
+            throw sqlcpp::exception(err, "Error retrieving metadata: " + std::string(errstr));
         }
 
         unsigned int column_count= mysql_num_fields(metadata);
@@ -483,8 +477,7 @@ void mysql_statement::prepare_buffers()
             // TODO process error, throw exception
             int err = mysql_stmt_errno(_stmt.get());
             const char* errstr = mysql_stmt_error(_stmt.get());
-
-            std::cout << "Error binding results: " << err << " - " << errstr << std::endl;
+            throw sqlcpp::exception(err, "Error binding results: " + std::string(errstr));
         }
     }
 }
@@ -495,8 +488,9 @@ std::vector<value> mysql_statement::fetch_next_row()
     if (ok()) {
         int res = mysql_stmt_fetch(_stmt.get());
         if(res!=0 && res!=MYSQL_NO_DATA && res!=MYSQL_DATA_TRUNCATED) {
-            // TODO process error, throw exception
-            return {};
+            int err = mysql_stmt_errno(_stmt.get());
+            const char* errstr = mysql_stmt_error(_stmt.get());
+            throw sqlcpp::exception(err, "Error fetching row: " + std::string(errstr));
         } else if(res==MYSQL_NO_DATA) {
             // No data
             return {};
@@ -610,7 +604,6 @@ void mysql_statement::bind(unsigned int index, std::nullptr_t)
     set<my_bool>(_is_nulls, index, 1, 0);
     set<enum_field_types>(_my_types, index, MYSQL_TYPE_NULL, MYSQL_TYPE_NULL);
     set(_buffers, index, blob(), blob());
-    // TODO process error, throw exception
 }
 
 void mysql_statement::bind(unsigned int index, const std::string& value)
@@ -619,7 +612,6 @@ void mysql_statement::bind(unsigned int index, const std::string& value)
     set<my_bool>(_is_nulls, index, 0, 0);
     set<enum_field_types>(_my_types, index, MYSQL_TYPE_STRING, MYSQL_TYPE_NULL);
     set(_buffers, index, string_to_blob(value), blob());
-    // TODO process error, throw exception
 }
 
 void mysql_statement::bind(unsigned int index, const std::string_view& value)
@@ -628,7 +620,6 @@ void mysql_statement::bind(unsigned int index, const std::string_view& value)
     set<my_bool>(_is_nulls, index, 0, 0);
     set<enum_field_types>(_my_types, index, MYSQL_TYPE_STRING, MYSQL_TYPE_NULL);
     set(_buffers, index, string_to_blob(value), blob());
-    // TODO process error, throw exception
 }
 
 void mysql_statement::bind(unsigned int index, const blob& value)
@@ -638,7 +629,6 @@ void mysql_statement::bind(unsigned int index, const blob& value)
     set<my_bool>(_is_nulls, index, 0, 0);
     set<enum_field_types>(_my_types, index, MYSQL_TYPE_BLOB, MYSQL_TYPE_NULL);
     set(_buffers, index, value, blob());
-    // TODO process error, throw exception
 }
 
 void mysql_statement::bind(unsigned int index, bool value)
@@ -648,7 +638,6 @@ void mysql_statement::bind(unsigned int index, bool value)
     set<my_bool>(_is_nulls, index, 0, 0);
     set<enum_field_types>(_my_types, index, MYSQL_TYPE_TINY, MYSQL_TYPE_NULL);
     set(_buffers, index, num_to_blob((unsigned char)(value ? 1 : 0)), blob());
-    // TODO process error, throw exception
 }
 
 void mysql_statement::bind(unsigned int index, int value)
@@ -658,7 +647,6 @@ void mysql_statement::bind(unsigned int index, int value)
     set<my_bool>(_is_nulls, index, 0, 0);
     set<enum_field_types>(_my_types, index, MYSQL_TYPE_LONG, MYSQL_TYPE_NULL);
     set(_buffers, index, num_to_blob(value), blob());
-    // TODO process error, throw exception
 }
 
 void mysql_statement::bind(unsigned int index, int64_t value)
@@ -668,7 +656,6 @@ void mysql_statement::bind(unsigned int index, int64_t value)
     set<my_bool>(_is_nulls, index, 0, 0);
     set<enum_field_types>(_my_types, index, MYSQL_TYPE_LONGLONG, MYSQL_TYPE_NULL);
     set(_buffers, index, num_to_blob(value), blob());
-    // TODO process error, throw exception
 }
 
 void mysql_statement::bind(unsigned int index, double value)
@@ -678,7 +665,6 @@ void mysql_statement::bind(unsigned int index, double value)
     set<my_bool>(_is_nulls, index, 0, 0);
     set<enum_field_types>(_my_types, index, MYSQL_TYPE_DOUBLE, MYSQL_TYPE_NULL);
     set(_buffers, index, num_to_blob(value), blob());
-    // TODO process error, throw exception
 }
 
 void mysql_statement::bind(unsigned int index, const value& value)
@@ -709,19 +695,16 @@ bool mysql_statement::execute()
         }
 
         if (mysql_stmt_bind_param(_stmt.get(), binds.data()) != 0) { // skip index 0
-            // TODO throw exception
-            // throw statement_exception(mysql_stmt_error(_stmt.get()), mysql_stmt_errno(_stmt.get()));
             int err = mysql_stmt_errno(_stmt.get());
             const char* errstr = mysql_stmt_error(_stmt.get());
+            throw sqlcpp::exception(err, "Error binding parameters: " + std::string(errstr));
         }
     }
 
     if (mysql_stmt_execute(_stmt.get()) != 0) {
-        // TODO throw exception
-        // throw statement_exception(mysql_stmt_error(stmt_), mysql_stmt_errno(stmt_));
         int err = mysql_stmt_errno(_stmt.get());
         const char* errstr = mysql_stmt_error(_stmt.get());
-        return false;
+        throw sqlcpp::exception(err, "Error executing statement: " + std::string(errstr));
     }
 
     return true;
@@ -964,9 +947,8 @@ statement& statement::bind(const std::string& name, std::nullptr_t)
     int idx = parameter_binding_position(name);
     if(idx >= 0) {
         _stmt->bind(idx, nullptr);
-        // TODO process error, throw exception
     } else {
-        // TODO process error, throw exception
+        throw exception("Invalid parameter name '" + name + "'");
     }
     return *this;
 }
@@ -976,9 +958,8 @@ statement& statement::bind(const std::string& name, const std::string& value)
     int idx = parameter_binding_position(name);
     if(idx >= 0) {
         _stmt->bind(idx, value);
-        // TODO process error, throw exception
     } else {
-        // TODO process error, throw exception
+        throw exception("Invalid parameter name '" + name + "'");
     }
     return *this;
 }
@@ -988,9 +969,8 @@ statement& statement::bind(const std::string& name, const std::string_view& valu
     int idx = parameter_binding_position(name);
     if(idx >= 0) {
         _stmt->bind(idx, value);
-        // TODO process error, throw exception
     } else {
-        // TODO process error, throw exception
+        throw exception("Invalid parameter name '" + name + "'");
     }
     return *this;
 }
@@ -1000,9 +980,8 @@ statement& statement::bind(const std::string& name, const blob& value)
     int idx = parameter_binding_position(name);
     if(idx >= 0) {
         _stmt->bind(idx, value);
-        // TODO process error, throw exception
     } else {
-        // TODO process error, throw exception
+        throw exception("Invalid parameter name '" + name + "'");
     }
     return *this;
 }
@@ -1012,9 +991,8 @@ statement& statement::bind(const std::string& name, bool value)
     int idx = parameter_binding_position(name);
     if(idx >= 0) {
         _stmt->bind(idx, value);
-        // TODO process error, throw exception
     } else {
-        // TODO process error, throw exception
+        throw exception("Invalid parameter name '" + name + "'");
     }
     return *this;
 }
@@ -1024,9 +1002,8 @@ statement& statement::bind(const std::string& name, int value)
     int idx = parameter_binding_position(name);
     if(idx >= 0) {
         _stmt->bind(idx, value);
-        // TODO process error, throw exception
     } else {
-        // TODO process error, throw exception
+        throw exception("Invalid parameter name '" + name + "'");
     }
     return *this;
 }
@@ -1036,9 +1013,8 @@ statement& statement::bind(const std::string& name, int64_t value)
     int idx = parameter_binding_position(name);
     if(idx >= 0) {
         _stmt->bind(idx, value);
-        // TODO process error, throw exception
     } else {
-        // TODO process error, throw exception
+        throw exception("Invalid parameter name '" + name + "'");
     }
     return *this;
 }
@@ -1048,9 +1024,8 @@ statement& statement::bind(const std::string& name, double value)
     int idx = parameter_binding_position(name);
     if(idx >= 0) {
         _stmt->bind(idx, value);
-        // TODO process error, throw exception
     } else {
-        // TODO process error, throw exception
+        throw exception("Invalid parameter name '" + name + "'");
     }
     return *this;
 }
@@ -1068,9 +1043,8 @@ statement& statement::bind(unsigned int index, std::nullptr_t)
     int idx = parameter_binding_position(index);
     if(idx >= 0) {
         _stmt->bind(idx, nullptr);
-        // TODO process error, throw exception
     } else {
-        // TODO process error, throw exception
+        throw exception("Invalid parameter index " + std::to_string(index));
     }
     return *this;
 }
@@ -1080,9 +1054,8 @@ statement& statement::bind(unsigned int index, const std::string& value)
     int idx = parameter_binding_position(index);
     if(idx >= 0) {
         _stmt->bind(idx, value);
-        // TODO process error, throw exception
     } else {
-        // TODO process error, throw exception
+        throw exception("Invalid parameter index " + std::to_string(index));
     }
     return *this;
 }
@@ -1092,9 +1065,8 @@ statement& statement::bind(unsigned int index, const std::string_view& value)
     int idx = parameter_binding_position(index);
     if(idx >= 0) {
         _stmt->bind(idx, value);
-        // TODO process error, throw exception
     } else {
-        // TODO process error, throw exception
+        throw exception("Invalid parameter index " + std::to_string(index));
     }
     return *this;
 }
@@ -1104,9 +1076,8 @@ statement& statement::bind(unsigned int index, const blob& value)
     int idx = parameter_binding_position(index);
     if(idx >= 0) {
         _stmt->bind(idx, value);
-        // TODO process error, throw exception
     } else {
-        // TODO process error, throw exception
+        throw exception("Invalid parameter index " + std::to_string(index));
     }
     return *this;
 }
@@ -1116,9 +1087,8 @@ statement& statement::bind(unsigned int index, bool value)
     int idx = parameter_binding_position(index);
     if(idx >= 0) {
         _stmt->bind(idx, value);
-        // TODO process error, throw exception
     } else {
-        // TODO process error, throw exception
+        throw exception("Invalid parameter index " + std::to_string(index));
     }
     return *this;
 }
@@ -1128,9 +1098,8 @@ statement& statement::bind(unsigned int index, int value)
     int idx = parameter_binding_position(index);
     if(idx >= 0) {
         _stmt->bind(idx, value);
-        // TODO process error, throw exception
     } else {
-        // TODO process error, throw exception
+        throw exception("Invalid parameter index " + std::to_string(index));
     }
     return *this;
 }
@@ -1140,9 +1109,8 @@ statement& statement::bind(unsigned int index, int64_t value)
     int idx = parameter_binding_position(index);
     if(idx >= 0) {
         _stmt->bind(idx, value);
-        // TODO process error, throw exception
     } else {
-        // TODO process error, throw exception
+        throw exception("Invalid parameter index " + std::to_string(index));
     }
     return *this;
 }
@@ -1152,9 +1120,8 @@ statement& statement::bind(unsigned int index, double value)
     int idx = parameter_binding_position(index);
     if(idx >= 0) {
         _stmt->bind(idx, value);
-        // TODO process error, throw exception
     } else {
-        // TODO process error, throw exception
+        throw exception("Invalid parameter index " + std::to_string(index));
     }
     return *this;
 }
@@ -1164,9 +1131,8 @@ statement& statement::bind(unsigned int index, const value& value)
     int idx = parameter_binding_position(index);
     if(idx >= 0) {
         _stmt->bind(idx, value);
-        // TODO process error, throw exception
     } else {
-        // TODO process error, throw exception
+        throw exception("Invalid parameter index " + std::to_string(index));
     }
     return *this;
 }
@@ -1207,8 +1173,8 @@ std::shared_ptr<sqlcpp::buffered_resultset> statement::execute_buffered()
 connection::connection(MYSQL* db):
     _db(db, &mysql_close)
 {
-    if(db== nullptr) {
-        // TODO throw an exception
+    if(db==nullptr) {
+        throw sqlcpp::exception("Invalid database connection");
     }
 }
 
@@ -1222,7 +1188,7 @@ std::shared_ptr<connection> connection::create(const std::string& connection_str
     std::smatch matches;
 
     if (!std::regex_match(connection_string, matches, uri_regex)) {
-//        throw connection_exception("Invalid MariaDB connection string format");
+        throw sqlcpp::exception("Invalid MariaDB connection string format");
     }
 
     std::string username = matches[1].str();
@@ -1244,26 +1210,16 @@ std::shared_ptr<connection> connection::create(const std::string& host,
 
     if (mysql_real_connect(mysql, host.c_str(), username.c_str(), password.c_str(),
                            database.c_str(), port, nullptr, CLIENT_MULTI_STATEMENTS) == nullptr) {
-
         int err = mysql_errno(mysql);
-
-        MARIADB_CONNECTION_ERROR;
-
-        // TODO throw an exception with mysql_error(mysql)
-        throw new std::runtime_error(mysql_error(mysql));
-
-
-        // diag("Error (%d): %s (%d) in %s line %d", rc, mysql_error(mysql), \
-        //         mysql_errno(mysql), __FILE__, __LINE__);\
-        // throw connection_exception("Failed to connect to MariaDB server");
-        return {};
+        const char* errstr = mysql_error(mysql);
+        throw sqlcpp::exception(err, "Error creating connection: " + std::string(errstr));
     }
     return std::make_shared<connection>(mysql);
 }
 
 std::shared_ptr<sqlcpp::statement> connection::prepare(const std::string& query) {
     if(query.empty()) {
-        // TODO throw connection_exception("SQL query is empty");
+        throw sqlcpp::exception("SQL query is empty");
     }
 
     if (_last_stmt) {
@@ -1279,21 +1235,19 @@ std::shared_ptr<sqlcpp::statement> connection::prepare(const std::string& query)
     // Force update of max_length on result set metadata fetch
     static const my_bool update_max_length = 1;
     if(mysql_stmt_attr_set(stmt, STMT_ATTR_UPDATE_MAX_LENGTH, (void *)&update_max_length)) {
-        // TODO throw an exception with mysql_error(mysql)
         int err = mysql_errno(_db.get());
         const char* errstr = mysql_error(_db.get());
+        sqlcpp::exception ex(err, "Error statement preparation settings: " + std::string(errstr));
         mysql_stmt_close(stmt);
-        return nullptr;
+        throw ex;
     }
 
-//    if(mysql_stmt_prepare(stmt, query.c_str(), query.length())) {
     if(mysql_stmt_prepare(stmt, req.c_str(), req.length())) {
-        // TODO throw an exception with mysql_error(mysql)
-        // diag("Error: %s (%s: %d)", mysql_stmt_error(stmt), __FILE__, __LINE__);
         int err = mysql_errno(_db.get());
         const char* errstr = mysql_error(_db.get());
+        sqlcpp::exception ex(err, "Error preparing statement preparation: " + std::string(errstr));
         mysql_stmt_close(stmt);
-        return nullptr;
+        throw ex;
     }
 
     auto mdb_stmt = std::make_shared<mysql_statement>(stmt);
@@ -1313,9 +1267,7 @@ std::shared_ptr<stats_result> connection::execute(const std::string& sql) {
         // TODO throw exception
         int err = mysql_errno(_db.get());
         const char* errstr = mysql_error(_db.get());
-        throw new std::runtime_error(errstr);
-
-//        throw statement_exception(mysql_error(mysql_), mysql_errno(mysql_));
+        sqlcpp::exception ex(err, "Error executing query: " + std::string(errstr));
     }
 
     uint64_t total_affected_rows = 0;
@@ -1329,9 +1281,8 @@ std::shared_ptr<stats_result> connection::execute(const std::string& sql) {
         if (res == nullptr) {
             int err = mysql_errno(_db.get());
             if (err != 0) {
-                // TODO throw exception
                 const char *errstr = mysql_error(_db.get());
-                return nullptr;
+                sqlcpp::exception ex(err, "Error flushing buffers after executing query: " + std::string(errstr));
             }
         } else {
             mysql_free_result(res);

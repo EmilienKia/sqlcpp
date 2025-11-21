@@ -95,8 +95,7 @@ void details::connection_factory_registry::load_factory_library(const std::files
     if (fs::exists(lib_path)) {
         void* handle = dlopen(lib_path.c_str(), RTLD_LAZY);
         if (!handle) {
-            std::cerr << "Failed to load library: " << dlerror() << std::endl;
-//            throw std::runtime_error("Failed to load library: " + std::string(dlerror()));
+            throw exception("Failed to load library: " + std::string(dlerror()));
         }
     }
 }
@@ -599,7 +598,7 @@ const row& resultset_row_iterator::operator*() const
         }
         return _row;
     } else {
-        throw std::runtime_error("Invalid iterator");
+        throw exception("Invalid iterator");
     }
 }
 
@@ -611,7 +610,7 @@ const row& resultset_row_iterator::operator->() const
         }
         return _row;
     } else {
-        throw std::runtime_error("Invalid iterator");
+        throw exception("Invalid iterator");
     }
 }
 

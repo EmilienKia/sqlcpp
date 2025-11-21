@@ -23,7 +23,6 @@
 #include <postgresql/libpq-fe.h>
 
 #include <string>
-#
 
 namespace sqlcpp::postgresql
 {

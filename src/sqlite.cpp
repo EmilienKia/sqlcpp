@@ -368,9 +368,7 @@ std::shared_ptr<sqlcpp::cursor_resultset> statement::execute()
         case SQLITE_ROW:
             return std::shared_ptr<sqlcpp::cursor_resultset>{new resultset(_stmt, rc)};
         default:
-            // TODO process errors
-            // Throw exception
-            return {};
+            throw exception(rc, sqlite3_errstr(rc));
     }
 }
 
@@ -407,7 +405,7 @@ void statement::execute(std::function<void(const row_base&)> func)
                             const void* data = sqlite3_column_blob(_stmt.get(), index);
                             int size = sqlite3_column_bytes(_stmt.get(), index);
                             if(data == nullptr || size == 0) {
-                                // TODO throw exception ?
+                                // TODO throw exception or log a warning ?
                                 row.add_value(nullptr);
                             } else {
                                 row.add_value(blob(reinterpret_cast<const unsigned char*>(data), reinterpret_cast<const unsigned char*>(data) + size));
@@ -422,11 +420,10 @@ void statement::execute(std::function<void(const row_base&)> func)
                 func(std::move(row));
                 rc = sqlite3_step(_stmt.get());
             }
+            break;
         }
         default:
-            // TODO process errors
-            // Throw exception
-            break;
+            throw exception(rc, sqlite3_errstr(rc));
     }
 }
 
@@ -486,9 +483,7 @@ std::shared_ptr<sqlcpp::buffered_resultset> statement::execute_buffered()
             return buff;
         }
         default:
-            // TODO process errors
-            // Throw exception
-            return {};
+            throw exception(rc, sqlite3_errstr(rc));
     }
 }
 
@@ -532,10 +527,12 @@ statement& statement::bind(const std::string& name, std::nullptr_t)
 {
     int idx = parameter_binding_position(name);
     if(idx >= 0) {
-        sqlite3_bind_null(_stmt.get(), idx+1);
-        // TODO process error, throw exception
+        int rc = sqlite3_bind_null(_stmt.get(), idx+1);
+        if (rc != SQLITE_OK) {
+            throw exception(rc, sqlite3_errstr(rc));
+        }
     } else {
-        // TODO process error, throw exception
+        throw exception("Invalid parameter name '" + name + "'");
     }
     return *this;
 }
@@ -544,10 +541,12 @@ statement& statement::bind(const std::string& name, const std::string& value)
 {
     int idx = parameter_binding_position(name);
     if(idx >= 0) {
-        sqlite3_bind_text(_stmt.get(), idx+1, value.c_str(), value.size(), SQLITE_TRANSIENT);
-        // TODO process error, throw exception
+        int rc = sqlite3_bind_text(_stmt.get(), idx+1, value.c_str(), value.size(), SQLITE_TRANSIENT);
+        if (rc != SQLITE_OK) {
+            throw exception(rc, sqlite3_errstr(rc));
+        }
     } else {
-        // TODO process error, throw exception
+        throw exception("Invalid parameter name '" + name + "'");
     }
     return *this;
 }
@@ -556,10 +555,12 @@ statement& statement::bind(const std::string& name, const std::string_view& valu
 {
     int idx = parameter_binding_position(name);
     if(idx >= 0) {
-        sqlite3_bind_text(_stmt.get(), idx+1, value.data(), value.size(), SQLITE_TRANSIENT);
-        // TODO process error, throw exception
+        int rc = sqlite3_bind_text(_stmt.get(), idx+1, value.data(), value.size(), SQLITE_TRANSIENT);
+        if (rc != SQLITE_OK) {
+            throw exception(rc, sqlite3_errstr(rc));
+        }
     } else {
-        // TODO process error, throw exception
+        throw exception("Invalid parameter name '" + name + "'");
     }
     return *this;
 }
@@ -568,10 +569,12 @@ statement& statement::bind(const std::string& name, const blob& value)
 {
     int idx = parameter_binding_position(name);
     if(idx >= 0) {
-        sqlite3_bind_blob(_stmt.get(), idx+1, value.data(), value.size(), SQLITE_TRANSIENT);
-        // TODO process error, throw exception
+        int rc = sqlite3_bind_blob(_stmt.get(), idx+1, value.data(), value.size(), SQLITE_TRANSIENT);
+        if (rc != SQLITE_OK) {
+            throw exception(rc, sqlite3_errstr(rc));
+        }
     } else {
-        // TODO process error, throw exception
+        throw exception("Invalid parameter name '" + name + "'");
     }
     return *this;
 }
@@ -580,10 +583,12 @@ statement& statement::bind(const std::string& name, bool value)
 {
     int idx = parameter_binding_position(name);
     if(idx >= 0) {
-        sqlite3_bind_int(_stmt.get(), idx+1, value ? 1 : 0);
-        // TODO process error, throw exception
+        int rc = sqlite3_bind_int(_stmt.get(), idx+1, value ? 1 : 0);
+        if (rc != SQLITE_OK) {
+            throw exception(rc, sqlite3_errstr(rc));
+        }
     } else {
-        // TODO process error, throw exception
+        throw exception("Invalid parameter name '" + name + "'");
     }
     return *this;
 }
@@ -592,10 +597,12 @@ statement& statement::bind(const std::string& name, int value)
 {
     int idx = parameter_binding_position(name);
     if(idx >= 0) {
-        sqlite3_bind_int(_stmt.get(), idx+1, value);
-        // TODO process error, throw exception
+        int rc = sqlite3_bind_int(_stmt.get(), idx+1, value);
+        if (rc != SQLITE_OK) {
+            throw exception(rc, sqlite3_errstr(rc));
+        }
     } else {
-        // TODO process error, throw exception
+        throw exception("Invalid parameter name '" + name + "'");
     }
     return *this;
 }
@@ -604,10 +611,12 @@ statement& statement::bind(const std::string& name, int64_t value)
 {
     int idx = parameter_binding_position(name);
     if(idx >= 0) {
-        sqlite3_bind_int64(_stmt.get(), idx+1, value);
-        // TODO process error, throw exception
+        int rc = sqlite3_bind_int64(_stmt.get(), idx+1, value);
+        if (rc != SQLITE_OK) {
+            throw exception(rc, sqlite3_errstr(rc));
+        }
     } else {
-        // TODO process error, throw exception
+        throw exception("Invalid parameter name '" + name + "'");
     }
     return *this;
 }
@@ -616,10 +625,12 @@ statement& statement::bind(const std::string& name, double value)
 {
     int idx = parameter_binding_position(name);
     if(idx >= 0) {
-        sqlite3_bind_double(_stmt.get(), idx+1, value);
-        // TODO process error, throw exception
+        int rc = sqlite3_bind_double(_stmt.get(), idx+1, value);
+        if (rc != SQLITE_OK) {
+            throw exception(rc, sqlite3_errstr(rc));
+        }
     } else {
-        // TODO process error, throw exception
+        throw exception("Invalid parameter name '" + name + "'");
     }
     return *this;
 }
@@ -636,10 +647,12 @@ statement& statement::bind(unsigned int index, std::nullptr_t)
 {
     int idx = parameter_binding_position(index);
     if(idx >= 0) {
-        sqlite3_bind_null(_stmt.get(), idx+1);
-        // TODO process error, throw exception
+        int rc = sqlite3_bind_null(_stmt.get(), idx+1);
+        if (rc != SQLITE_OK) {
+            throw exception(rc, sqlite3_errstr(rc));
+        }
     } else {
-        // TODO process error, throw exception
+        throw exception("Invalid parameter index " + std::to_string(index));
     }
     return *this;
 }
@@ -648,10 +661,12 @@ statement& statement::bind(unsigned int index, const std::string& value)
 {
     int idx = parameter_binding_position(index);
     if(idx >= 0) {
-        sqlite3_bind_text(_stmt.get(), idx+1, value.c_str(), value.size(), SQLITE_TRANSIENT);
-        // TODO process error, throw exception
+        int rc = sqlite3_bind_text(_stmt.get(), idx+1, value.c_str(), value.size(), SQLITE_TRANSIENT);
+        if (rc != SQLITE_OK) {
+            throw exception(rc, sqlite3_errstr(rc));
+        }
     } else {
-        // TODO process error, throw exception
+        throw exception("Invalid parameter index " + std::to_string(index));
     }
     return *this;
 }
@@ -660,10 +675,12 @@ statement& statement::bind(unsigned int index, const std::string_view& value)
 {
     int idx = parameter_binding_position(index);
     if(idx >= 0) {
-        sqlite3_bind_text(_stmt.get(), idx+1, value.data(), value.size(), SQLITE_TRANSIENT);
-        // TODO process error, throw exception
+        int rc = sqlite3_bind_text(_stmt.get(), idx+1, value.data(), value.size(), SQLITE_TRANSIENT);
+        if (rc != SQLITE_OK) {
+            throw exception(rc, sqlite3_errstr(rc));
+        }
     } else {
-        // TODO process error, throw exception
+        throw exception("Invalid parameter index " + std::to_string(index));
     }
     return *this;
 }
@@ -672,10 +689,12 @@ statement& statement::bind(unsigned int index, const blob& value)
 {
     int idx = parameter_binding_position(index);
     if(idx >= 0) {
-        sqlite3_bind_blob(_stmt.get(), idx+1, value.data(), value.size(), SQLITE_TRANSIENT);
-        // TODO process error, throw exception
+        int rc = sqlite3_bind_blob(_stmt.get(), idx+1, value.data(), value.size(), SQLITE_TRANSIENT);
+        if (rc != SQLITE_OK) {
+            throw exception(rc, sqlite3_errstr(rc));
+        }
     } else {
-        // TODO process error, throw exception
+        throw exception("Invalid parameter index " + std::to_string(index));
     }
     return *this;
 }
@@ -684,10 +703,12 @@ statement& statement::bind(unsigned int index, bool value)
 {
     int idx = parameter_binding_position(index);
     if(idx >= 0) {
-        sqlite3_bind_int(_stmt.get(), idx+1, value ? 1 : 0);
-        // TODO process error, throw exception
+        int rc = sqlite3_bind_int(_stmt.get(), idx+1, value ? 1 : 0);
+        if (rc != SQLITE_OK) {
+            throw exception(rc, sqlite3_errstr(rc));
+        }
     } else {
-        // TODO process error, throw exception
+        throw exception("Invalid parameter index " + std::to_string(index));
     }
     return *this;
 }
@@ -696,10 +717,12 @@ statement& statement::bind(unsigned int index, int value)
 {
     int idx = parameter_binding_position(index);
     if(idx >= 0) {
-        sqlite3_bind_int(_stmt.get(), idx+1, value);
-        // TODO process error, throw exception
+        int rc = sqlite3_bind_int(_stmt.get(), idx+1, value);
+        if (rc != SQLITE_OK) {
+            throw exception(rc, sqlite3_errstr(rc));
+        }
     } else {
-        // TODO process error, throw exception
+        throw exception("Invalid parameter index " + std::to_string(index));
     }
     return *this;
 }
@@ -708,10 +731,12 @@ statement& statement::bind(unsigned int index, int64_t value)
 {
     int idx = parameter_binding_position(index);
     if(idx >= 0) {
-        sqlite3_bind_int64(_stmt.get(), idx+1, value);
-        // TODO process error, throw exception
+        int rc = sqlite3_bind_int64(_stmt.get(), idx+1, value);
+        if (rc != SQLITE_OK) {
+            throw exception(rc, sqlite3_errstr(rc));
+        }
     } else {
-        // TODO process error, throw exception
+        throw exception("Invalid parameter index " + std::to_string(index));
     }
     return *this;
 }
@@ -720,10 +745,12 @@ statement& statement::bind(unsigned int index, double value)
 {
     int idx = parameter_binding_position(index);
     if(idx >= 0) {
-        sqlite3_bind_double(_stmt.get(), idx+1, value);
-        // TODO process error, throw exception
+        int rc = sqlite3_bind_double(_stmt.get(), idx+1, value);
+        if (rc != SQLITE_OK) {
+            throw exception(rc, sqlite3_errstr(rc));
+        }
     } else {
-        // TODO process error, throw exception
+        throw exception("Invalid parameter index " + std::to_string(index));
     }
     return *this;
 }
@@ -759,8 +786,7 @@ std::shared_ptr<connection> connection::create(const std::string& connection_str
     int rc = sqlite3_open(connection_string.c_str(), &db);
     if (rc != SQLITE_OK) {
         sqlite3_close(db);
-        // TODO throw exception
-        return {};
+        throw exception(rc, sqlite3_errstr(rc));
     }
     return std::make_shared<connection>(db);
 }
@@ -774,7 +800,7 @@ std::shared_ptr<stats_result> connection::execute(const std::string& query)
     if (rc != SQLITE_OK) {
         std::cerr << "Failed to execute statement (" << rc << "): " << err_msg << std::endl;
         sqlite3_free(err_msg);
-        // TODO throw exception
+        throw exception(rc, sqlite3_errstr(rc));
     }
 
     sqlite3_int64 last_inserted_id = sqlite3_last_insert_rowid(_db);
@@ -793,8 +819,7 @@ std::shared_ptr<sqlcpp::statement> connection::prepare(const std::string& query)
     rc = sqlite3_prepare_v2(_db, req.c_str(), req.size(), &res, 0);
     if (rc != SQLITE_OK) {
         std::cerr << "Failed to execute statement (" << rc << "): " << sqlite3_errmsg(_db) << std::endl;
-        // TODO throw exception
-        return {};
+        throw exception(rc, sqlite3_errstr(rc));
     }
     return std::make_shared<statement>(res, std::move(binds));
 }

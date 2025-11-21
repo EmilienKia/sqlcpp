@@ -166,16 +166,14 @@ value helpers::get_value(PGresult* res, unsigned int row, unsigned int col) {
                         return (int) *(const short *) val;
                     case sizeof(int):
                         return (int) *(const int *) val;
-                    default:
-                        // TODO log an error or an exception
-                        return {};
+                default:
+                        throw sqlcpp::exception("Incompatible size " + std::to_string(size) + " for column " + std::to_string(col) + " of type " + std::to_string(PQftype(res, col)) + " (int16/int32)");
                 }
             case INT8OID:
                 if(size == sizeof(int64_t)) {
                     return (int64_t) *(const int64_t *) val;
                 } else {
-                    // TODO log an error or an exception
-                    return {};
+                    throw sqlcpp::exception("Incompatible size " + std::to_string(size) + " for column " + std::to_string(col) + " of type " + std::to_string(PQftype(res, col)) + " (int64)");
                 }
             case FLOAT4OID:
             case FLOAT8OID:
@@ -185,8 +183,7 @@ value helpers::get_value(PGresult* res, unsigned int row, unsigned int col) {
                     case sizeof(double ):
                         return (double) *(const double *) val;
                     default:
-                        // TODO log an error or an exception
-                        return {};
+                        throw sqlcpp::exception("Incompatible size " + std::to_string(size) + " for column " + std::to_string(col) + " of type " + std::to_string(PQftype(res, col)) + " (float/double)");
                 }
             case TEXTOID:
             case VARCHAROID:
@@ -195,7 +192,6 @@ value helpers::get_value(PGresult* res, unsigned int row, unsigned int col) {
             case CHAROID:
                 return std::string(val, val+size);
             case BYTEAOID:
-                // TODO To be tested ???
                 return blob{val, val+size};
 
             default:
@@ -243,11 +239,11 @@ protected:
     size_t _row = 0;
 
 public:
-    resultset_row_iterator_impl(std::shared_ptr<PGresult> stmt):
+    explicit resultset_row_iterator_impl(std::shared_ptr<PGresult> stmt):
         _stmt(stmt)
     {}
 
-    virtual ~resultset_row_iterator_impl() = default;
+    ~resultset_row_iterator_impl() override = default;
 
     bool ok() const;
     operator bool() const { return ok(); }
@@ -287,7 +283,7 @@ bool resultset_row_iterator_impl::different(const sqlcpp::resultset_row_iterator
 {
     if(auto impl = dynamic_cast<const resultset_row_iterator_impl*>(&other) ; impl!=nullptr) {
         if(!ok() && !impl->ok()) {
-            // Both invalid, consider they are the same
+            // Both invalids, consider they are the same
             return false;
         } else {
             // Both valid, compare stmt and row
@@ -380,8 +376,7 @@ int resultset_row_iterator_impl::get_value_int(unsigned int index) const
             case sizeof(int):
                 return (int) *(const int *) val;
             default:
-                // TODO log an error or an exception
-                return 0;
+                throw sqlcpp::exception("Incompatible size " + std::to_string(size) + " for column " + std::to_string(index) + " of type " + std::to_string(PQftype(_stmt.get(), index)) + " (int16/int32)");
         }
     } else {
         return std::stoi(val);
@@ -402,8 +397,7 @@ int64_t resultset_row_iterator_impl::get_value_int64(unsigned int index) const
         if(size == sizeof(int64_t)) {
             return (int64_t) *(const int64_t *) val;
         } else {
-            // TODO log an error or an exception
-            return 0;
+            throw sqlcpp::exception("Incompatible size " + std::to_string(size) + " for column " + std::to_string(index) + " of type " + std::to_string(PQftype(_stmt.get(), index)) + " (int64)");
         }
     } else {
         return std::stoll(val);
@@ -427,8 +421,7 @@ double resultset_row_iterator_impl::get_value_double(unsigned int index) const
             case sizeof(double ):
                 return (double) *(const double *) val;
             default:
-                // TODO log an error or an exception
-                return {};
+                throw sqlcpp::exception("Incompatible size " + std::to_string(size) + " for column " + std::to_string(index) + " of type " + std::to_string(PQftype(_stmt.get(), index)) + " (float/double)");
         }
     } else {
         return std::stod(val);
@@ -649,11 +642,11 @@ std::shared_ptr<sqlcpp::cursor_resultset> statement::execute()
         case PGRES_COMMAND_OK:
         case PGRES_TUPLES_OK:
             return std::make_shared<resultset>(res);
-        default:
-            std::cerr << "Failed to execute statement: " << PQerrorMessage(_db.lock().get()) << std::endl;
+        default: {
+            sqlcpp::exception ex(PQresultStatus(res), "Failed to execute statement: " + std::string(PQerrorMessage(_db.lock().get())));
             PQclear(res);
-            // TODO throw exception
-            return {};
+            throw ex;
+        }
     }
 }
 
@@ -676,10 +669,11 @@ void statement::execute(std::function<void(const row_base&)> func)
             PQclear(res);
             break;
         }
-        default:
-            std::cerr << "Failed to execute statement: " << PQerrorMessage(_db.lock().get()) << std::endl;
-            // TODO throw exception
+        default: {
+            sqlcpp::exception ex(PQresultStatus(res), "Failed to execute statement: " + std::string(PQerrorMessage(_db.lock().get())));
             PQclear(res);
+            throw ex;
+        }
     }
 }
 
@@ -716,14 +710,12 @@ std::shared_ptr<sqlcpp::buffered_resultset> statement::execute_buffered()
             PQclear(res);
             return buff;
         }
-        default:
-            std::cerr << "Failed to execute statement: " << PQerrorMessage(_db.lock().get()) << std::endl;
+        default: {
+            sqlcpp::exception ex(PQresultStatus(res), "Failed to execute statement: " + std::string(PQerrorMessage(_db.lock().get())));
             PQclear(res);
-            // TODO throw exception
-            return {};
+            throw ex;
+        }
     }
-
-    return {};
 }
 
 unsigned int statement::parameter_count() const
@@ -774,9 +766,8 @@ statement& statement::bind(const std::string& name, std::nullptr_t)
     int idx = parameter_binding_position(name);
     if(idx >= 0) {
         ensure(_params, idx)[idx] = nullptr;
-        // TODO process error, throw exception
     } else {
-        // TODO process error, throw exception
+        throw exception("Invalid parameter name '" + name + "'");
     }
     return *this;
 }
@@ -786,9 +777,8 @@ statement& statement::bind(const std::string& name, const std::string& value)
     int idx = parameter_binding_position(name);
     if(idx >= 0) {
         ensure(_params, idx)[idx] = value;
-        // TODO process error, throw exception
     } else {
-        // TODO process error, throw exception
+        throw exception("Invalid parameter name '" + name + "'");
     }
     return *this;
 }
@@ -798,9 +788,8 @@ statement& statement::bind(const std::string& name, const std::string_view& valu
     int idx = parameter_binding_position(name);
     if(idx >= 0) {
         ensure(_params, idx)[idx] = std::string(value);
-        // TODO process error, throw exception
     } else {
-        // TODO process error, throw exception
+        throw exception("Invalid parameter name '" + name + "'");
     }
     return *this;
 }
@@ -810,9 +799,8 @@ statement& statement::bind(const std::string& name, const blob& value)
     int idx = parameter_binding_position(name);
     if(idx >= 0) {
         ensure(_params, idx)[idx] = value;
-        // TODO process error, throw exception
     } else {
-        // TODO process error, throw exception
+        throw exception("Invalid parameter name '" + name + "'");
     }
     return *this;
 }
@@ -822,9 +810,8 @@ statement& statement::bind(const std::string& name, bool value)
     int idx = parameter_binding_position(name);
     if(idx >= 0) {
         ensure(_params, idx)[idx] = value;
-        // TODO process error, throw exception
     } else {
-        // TODO process error, throw exception
+        throw exception("Invalid parameter name '" + name + "'");
     }
     return *this;
 }
@@ -834,9 +821,8 @@ statement& statement::bind(const std::string& name, int value)
     int idx = parameter_binding_position(name);
     if(idx >= 0) {
         ensure(_params, idx)[idx] = value;
-        // TODO process error, throw exception
     } else {
-        // TODO process error, throw exception
+        throw exception("Invalid parameter name '" + name + "'");
     }
     return *this;
 }
@@ -846,9 +832,8 @@ statement& statement::bind(const std::string& name, int64_t value)
     int idx = parameter_binding_position(name);
     if(idx >= 0) {
         ensure(_params, idx)[idx] = value;
-        // TODO process error, throw exception
     } else {
-        // TODO process error, throw exception
+        throw exception("Invalid parameter name '" + name + "'");
     }
     return *this;
 }
@@ -858,9 +843,8 @@ statement& statement::bind(const std::string& name, double value)
     int idx = parameter_binding_position(name);
     if(idx >= 0) {
         ensure(_params, idx)[idx] = value;
-        // TODO process error, throw exception
     } else {
-        // TODO process error, throw exception
+        throw exception("Invalid parameter name '" + name + "'");
     }
     return *this;
 }
@@ -877,9 +861,8 @@ statement& statement::bind(unsigned int index, std::nullptr_t)
     int idx = parameter_binding_position(index);
     if(idx >= 0) {
         ensure(_params, idx)[idx] = nullptr;
-        // TODO process error, throw exception
     } else {
-        // TODO process error, throw exception
+        throw exception("Invalid parameter index " + std::to_string(index));
     }
     return *this;
 }
@@ -889,9 +872,8 @@ statement& statement::bind(unsigned int index, const std::string& value)
     int idx = parameter_binding_position(index);
     if(idx >= 0) {
         ensure(_params, idx)[idx] = value;
-        // TODO process error, throw exception
     } else {
-        // TODO process error, throw exception
+        throw exception("Invalid parameter index " + std::to_string(index));
     }
     return *this;
 }
@@ -901,9 +883,8 @@ statement& statement::bind(unsigned int index, const std::string_view& value)
     int idx = parameter_binding_position(index);
     if(idx >= 0) {
         ensure(_params, idx)[idx] = std::string(value);
-        // TODO process error, throw exception
     } else {
-        // TODO process error, throw exception
+        throw exception("Invalid parameter index " + std::to_string(index));
     }
     return *this;
 }
@@ -913,9 +894,8 @@ statement& statement::bind(unsigned int index, const blob& value)
     int idx = parameter_binding_position(index);
     if(idx >= 0) {
         ensure(_params, idx)[idx] = value;
-        // TODO process error, throw exception
     } else {
-        // TODO process error, throw exception
+        throw exception("Invalid parameter index " + std::to_string(index));
     }
     return *this;
 }
@@ -925,9 +905,8 @@ statement& statement::bind(unsigned int index, bool value)
     int idx = parameter_binding_position(index);
     if(idx >= 0) {
         ensure(_params, idx)[idx] = value;
-        // TODO process error, throw exception
     } else {
-        // TODO process error, throw exception
+        throw exception("Invalid parameter index " + std::to_string(index));
     }
     return *this;
 }
@@ -937,9 +916,8 @@ statement& statement::bind(unsigned int index, int value)
     int idx = parameter_binding_position(index);
     if(idx >= 0) {
         ensure(_params, idx)[idx] = value;
-        // TODO process error, throw exception
     } else {
-        // TODO process error, throw exception
+        throw exception("Invalid parameter index " + std::to_string(index));
     }
     return *this;
 }
@@ -949,9 +927,8 @@ statement& statement::bind(unsigned int index, int64_t value)
     int idx = parameter_binding_position(index);
     if(idx >= 0) {
         ensure(_params, idx)[idx] = value;
-        // TODO process error, throw exception
     } else {
-        // TODO process error, throw exception
+        throw exception("Invalid parameter index " + std::to_string(index));
     }
     return *this;
 }
@@ -961,9 +938,8 @@ statement& statement::bind(unsigned int index, double value)
     int idx = parameter_binding_position(index);
     if(idx >= 0) {
         ensure(_params, idx)[idx] = value;
-        // TODO process error, throw exception
     } else {
-        // TODO process error, throw exception
+        throw exception("Invalid parameter index " + std::to_string(index));
     }
     return *this;
 }
@@ -994,9 +970,9 @@ std::shared_ptr<connection> connection::create(const std::string& connection_str
 std::cout << "Creating postgresql connection to " << connection_string << std::endl;
     PGconn* db = PQconnectdb(connection_string.c_str());
     if(ConnStatusType status = PQstatus(db); status!=CONNECTION_OK) {
+        sqlcpp::exception ex(status, "Failed to connect to database: " + std::string(PQerrorMessage(db)));
         PQfinish(db);
-        // TODO throw exception
-        return {};
+        throw ex;
     }
     return std::make_shared<connection>(db);
 }
@@ -1015,11 +991,11 @@ std::shared_ptr<stats_result> connection::execute(const std::string& query)
             PQclear(res);
             return std::make_shared<details::simple_stats_result>(affected_rows, last_inserted);
         }
-        default:
-            std::cerr << "Failed to execute statement: " << PQerrorMessage(_db.get()) << std::endl;
+        default: {
+            sqlcpp::exception ex(PQresultStatus(res), "Failed to execute query: " + std::string(PQerrorMessage(_db.get())));
             PQclear(res);
-            // TODO throw exception
-            return nullptr;
+            throw ex;
+        }
     }
 }
 
@@ -1037,11 +1013,11 @@ std::shared_ptr<sqlcpp::statement> connection::prepare(const std::string& query)
         case PGRES_COMMAND_OK:
             PQclear(res);
             return std::make_shared<statement>(_db, stmt_name, std::move(binds));
-        default:
-            std::cerr << "Failed to prepare statement: " << PQerrorMessage(_db.get()) << std::endl;
+        default: {
+            sqlcpp::exception ex(PQresultStatus(res), "Failed to prepare statement: " + std::string(PQerrorMessage(_db.get())));
             PQclear(res);
-            // TODO throw exception
-            return {};
+            throw ex;
+        }
     }
 }
 
