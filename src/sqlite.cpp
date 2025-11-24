@@ -319,8 +319,12 @@ protected:
 
     std::vector<details::var_bind> _var_bindings;
 
+    bool _executed = false;
+
     int parameter_binding_position(const std::string& name) const;
     int parameter_binding_position(unsigned int index) const;
+
+    void reset_if_needed();
 
 public:
 
@@ -338,6 +342,8 @@ public:
     unsigned int parameter_count() const override;
     int parameter_index(const std::string& name) const override;
     std::string parameter_name(unsigned int index) const override;
+
+    void clear_bindings() override;
 
     statement& bind(const std::string& name, std::nullptr_t) override;
     statement& bind(const std::string& name, const std::string& value) override;
@@ -362,6 +368,8 @@ public:
 
 std::shared_ptr<sqlcpp::cursor_resultset> statement::execute()
 {
+    reset_if_needed();
+    _executed = true;
     int rc = sqlite3_step(_stmt.get());
     switch(rc) {
         case SQLITE_DONE:
@@ -374,6 +382,8 @@ std::shared_ptr<sqlcpp::cursor_resultset> statement::execute()
 
 void statement::execute(std::function<void(const row_base&)> func)
 {
+    reset_if_needed();
+    _executed = true;
     int rc = sqlite3_step(_stmt.get());
     switch(rc) {
         case SQLITE_DONE:
@@ -429,6 +439,8 @@ void statement::execute(std::function<void(const row_base&)> func)
 
 std::shared_ptr<sqlcpp::buffered_resultset> statement::execute_buffered()
 {
+    reset_if_needed();
+    _executed = true;
     int rc = sqlite3_step(_stmt.get());
     switch(rc) {
         case SQLITE_DONE:
@@ -487,6 +499,17 @@ std::shared_ptr<sqlcpp::buffered_resultset> statement::execute_buffered()
     }
 }
 
+void statement::reset_if_needed()
+{
+    if (_executed) {
+        int rc = sqlite3_reset(_stmt.get());
+        if (rc != SQLITE_OK) {
+            throw exception(rc, sqlite3_errstr(rc));
+        }
+        _executed = false;
+    }
+}
+
 unsigned int statement::parameter_count() const
 {
     return _var_bindings.size();
@@ -522,9 +545,18 @@ int statement::parameter_binding_position(unsigned int index) const
     return _var_bindings.size()>index ? _var_bindings[index].position : -1;
 }
 
+void statement::clear_bindings()
+{
+    reset_if_needed();
+    int rc = sqlite3_clear_bindings(_stmt.get());
+    if (rc != SQLITE_OK) {
+        throw exception(rc, sqlite3_errstr(rc));
+    }
+}
 
 statement& statement::bind(const std::string& name, std::nullptr_t) 
 {
+    reset_if_needed();
     int idx = parameter_binding_position(name);
     if(idx >= 0) {
         int rc = sqlite3_bind_null(_stmt.get(), idx+1);
@@ -539,6 +571,7 @@ statement& statement::bind(const std::string& name, std::nullptr_t)
 
 statement& statement::bind(const std::string& name, const std::string& value)
 {
+    reset_if_needed();
     int idx = parameter_binding_position(name);
     if(idx >= 0) {
         int rc = sqlite3_bind_text(_stmt.get(), idx+1, value.c_str(), value.size(), SQLITE_TRANSIENT);
@@ -553,6 +586,7 @@ statement& statement::bind(const std::string& name, const std::string& value)
 
 statement& statement::bind(const std::string& name, const std::string_view& value)
 {
+    reset_if_needed();
     int idx = parameter_binding_position(name);
     if(idx >= 0) {
         int rc = sqlite3_bind_text(_stmt.get(), idx+1, value.data(), value.size(), SQLITE_TRANSIENT);
@@ -567,6 +601,7 @@ statement& statement::bind(const std::string& name, const std::string_view& valu
 
 statement& statement::bind(const std::string& name, const blob& value) 
 {
+    reset_if_needed();
     int idx = parameter_binding_position(name);
     if(idx >= 0) {
         int rc = sqlite3_bind_blob(_stmt.get(), idx+1, value.data(), value.size(), SQLITE_TRANSIENT);
@@ -581,6 +616,7 @@ statement& statement::bind(const std::string& name, const blob& value)
 
 statement& statement::bind(const std::string& name, bool value)
 {
+    reset_if_needed();
     int idx = parameter_binding_position(name);
     if(idx >= 0) {
         int rc = sqlite3_bind_int(_stmt.get(), idx+1, value ? 1 : 0);
@@ -595,6 +631,7 @@ statement& statement::bind(const std::string& name, bool value)
 
 statement& statement::bind(const std::string& name, int value)
 {
+    reset_if_needed();
     int idx = parameter_binding_position(name);
     if(idx >= 0) {
         int rc = sqlite3_bind_int(_stmt.get(), idx+1, value);
@@ -609,6 +646,7 @@ statement& statement::bind(const std::string& name, int value)
 
 statement& statement::bind(const std::string& name, int64_t value)  
 {
+    reset_if_needed();
     int idx = parameter_binding_position(name);
     if(idx >= 0) {
         int rc = sqlite3_bind_int64(_stmt.get(), idx+1, value);
@@ -623,6 +661,7 @@ statement& statement::bind(const std::string& name, int64_t value)
 
 statement& statement::bind(const std::string& name, double value)  
 {
+    reset_if_needed();
     int idx = parameter_binding_position(name);
     if(idx >= 0) {
         int rc = sqlite3_bind_double(_stmt.get(), idx+1, value);
@@ -645,6 +684,7 @@ statement& statement::bind(const std::string& name, const value& value)
 
 statement& statement::bind(unsigned int index, std::nullptr_t)  
 {
+    reset_if_needed();
     int idx = parameter_binding_position(index);
     if(idx >= 0) {
         int rc = sqlite3_bind_null(_stmt.get(), idx+1);
@@ -659,6 +699,7 @@ statement& statement::bind(unsigned int index, std::nullptr_t)
 
 statement& statement::bind(unsigned int index, const std::string& value)  
 {
+    reset_if_needed();
     int idx = parameter_binding_position(index);
     if(idx >= 0) {
         int rc = sqlite3_bind_text(_stmt.get(), idx+1, value.c_str(), value.size(), SQLITE_TRANSIENT);
@@ -673,6 +714,7 @@ statement& statement::bind(unsigned int index, const std::string& value)
 
 statement& statement::bind(unsigned int index, const std::string_view& value)  
 {
+    reset_if_needed();
     int idx = parameter_binding_position(index);
     if(idx >= 0) {
         int rc = sqlite3_bind_text(_stmt.get(), idx+1, value.data(), value.size(), SQLITE_TRANSIENT);
@@ -687,6 +729,7 @@ statement& statement::bind(unsigned int index, const std::string_view& value)
 
 statement& statement::bind(unsigned int index, const blob& value)  
 {
+    reset_if_needed();
     int idx = parameter_binding_position(index);
     if(idx >= 0) {
         int rc = sqlite3_bind_blob(_stmt.get(), idx+1, value.data(), value.size(), SQLITE_TRANSIENT);
@@ -701,6 +744,7 @@ statement& statement::bind(unsigned int index, const blob& value)
 
 statement& statement::bind(unsigned int index, bool value)
 {
+    reset_if_needed();
     int idx = parameter_binding_position(index);
     if(idx >= 0) {
         int rc = sqlite3_bind_int(_stmt.get(), idx+1, value ? 1 : 0);
@@ -715,6 +759,7 @@ statement& statement::bind(unsigned int index, bool value)
 
 statement& statement::bind(unsigned int index, int value)
 {
+    reset_if_needed();
     int idx = parameter_binding_position(index);
     if(idx >= 0) {
         int rc = sqlite3_bind_int(_stmt.get(), idx+1, value);
@@ -729,6 +774,7 @@ statement& statement::bind(unsigned int index, int value)
 
 statement& statement::bind(unsigned int index, int64_t value)  
 {
+    reset_if_needed();
     int idx = parameter_binding_position(index);
     if(idx >= 0) {
         int rc = sqlite3_bind_int64(_stmt.get(), idx+1, value);
@@ -743,6 +789,7 @@ statement& statement::bind(unsigned int index, int64_t value)
 
 statement& statement::bind(unsigned int index, double value)  
 {
+    reset_if_needed();
     int idx = parameter_binding_position(index);
     if(idx >= 0) {
         int rc = sqlite3_bind_double(_stmt.get(), idx+1, value);

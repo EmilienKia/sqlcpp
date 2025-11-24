@@ -137,6 +137,8 @@ public:
     virtual int parameter_index(const std::string& name) const = 0;
     virtual std::string parameter_name(unsigned int index) const = 0;
 
+    virtual void clear_bindings() = 0;
+
     virtual statement& bind_null(const std::string& name);
     virtual statement& bind(const std::string& name, std::nullptr_t) = 0;
     virtual statement& bind(const std::string& name, const std::string& value) = 0;

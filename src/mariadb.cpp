@@ -182,25 +182,32 @@ protected:
     std::shared_ptr<MYSQL_STMT> _stmt;
     bool _executed = false;
 
+    // Bound variable buffers:
+    std::vector<unsigned long> _var_lengths;
+    std::vector<my_bool> _var_is_nulls;
+    std::vector<enum_field_types> _var_types;
+    std::vector<blob> _var_buffers;
+
+    // Res buffers:
+    std::vector<unsigned int> _res_flags;
+    std::vector<unsigned long> _res_lengths;
+    std::vector<my_bool> _res_is_nulls;
+    std::vector<enum_field_types> _res_types;
+    std::vector<blob> _res_buffers;
+    std::vector<MYSQL_BIND> _res_binds;
+
+    // Res metadata:
     std::vector<std::string> _column_names;
     std::vector<std::string> _column_origin_names;
     std::vector<std::string> _table_origin_names;
     std::vector<value_type> _column_types;
-
-    std::vector<unsigned long> _lengths;
-    std::vector<my_bool> _is_nulls;
-    std::vector<enum_field_types> _my_types;
-    std::vector<unsigned int> _flags;
-    std::vector<blob> _buffers;
-
-    std::vector<MYSQL_BIND> _binds;
 
 public:
     mysql_statement(MYSQL_STMT* stmt) : _stmt(stmt, mysql_stmt_close) {}
     mysql_statement(std::shared_ptr<MYSQL_STMT> stmt) : _stmt(stmt) {}
     ~mysql_statement() {
         close();
-        for(auto& bind : _binds) {
+        for(auto& bind : _res_binds) {
             bind = bind0;
         }
     }
@@ -283,6 +290,8 @@ public:
         params[index] = value;
     }
 
+    void clear_bindings();
+
     void bind(unsigned int index, std::nullptr_t);
     void bind(unsigned int index, const std::string& value);
     void bind(unsigned int index, const std::string_view& value);
@@ -327,11 +336,18 @@ void mysql_statement::store_all_results()
 
 void mysql_statement::prepare_buffers()
 {
-    // Clear buffers used by execute
-    _binds.clear();
-    _buffers.clear();
-    _is_nulls.clear();
-    _my_types.clear();
+    // Clear metadata
+    _column_names.clear();
+    _column_origin_names.clear();
+    _table_origin_names.clear();
+    _column_types.clear();
+
+    // Clear buffers used by execute(...) to receive result rows
+    _res_binds.clear();
+    _res_buffers.clear();
+    _res_is_nulls.clear();
+    _res_types.clear();
+    _res_flags.clear();
 
     if (ok()) {
         // Retrieve metadata for result columns
@@ -347,6 +363,11 @@ void mysql_statement::prepare_buffers()
         }
 
         unsigned int column_count= mysql_num_fields(metadata);
+        _column_names.reserve(column_count);
+        _column_origin_names.reserve(column_count);
+        _table_origin_names.reserve(column_count);
+        _column_types.reserve(column_count);
+
         MYSQL_FIELD *fields;
         fields = mysql_fetch_fields(metadata);
         for(size_t f=0; f<column_count; f++) {
@@ -362,7 +383,7 @@ void mysql_statement::prepare_buffers()
                     } else {
                         _column_types.push_back(value_type::INT);
                     }
-                    _my_types.push_back(MYSQL_TYPE_TINY);
+                    _res_types.push_back(MYSQL_TYPE_TINY);
                     break;
                 case MYSQL_TYPE_SHORT:
                 case MYSQL_TYPE_LONG:
@@ -370,16 +391,16 @@ void mysql_statement::prepare_buffers()
                 case MYSQL_TYPE_YEAR:
                     // TODO test for unsigned : UNSIGNED_FLAG
                     _column_types.push_back(value_type::INT);
-                    _my_types.push_back(MYSQL_TYPE_LONG);
+                    _res_types.push_back(MYSQL_TYPE_LONG);
                     break;
                 case MYSQL_TYPE_LONGLONG:
                     _column_types.push_back(value_type::INT64);
-                    _my_types.push_back(MYSQL_TYPE_LONGLONG);
+                    _res_types.push_back(MYSQL_TYPE_LONGLONG);
                     break;
                 case MYSQL_TYPE_FLOAT:
                 case MYSQL_TYPE_DOUBLE:
                     _column_types.push_back(value_type::DOUBLE);
-                    _my_types.push_back(MYSQL_TYPE_DOUBLE);
+                    _res_types.push_back(MYSQL_TYPE_DOUBLE);
                     break;
                 case MYSQL_TYPE_STRING:
                 case MYSQL_TYPE_VAR_STRING:
@@ -391,15 +412,15 @@ void mysql_statement::prepare_buffers()
                     // NOTE: BLOB_FLAG is set for BLOB and TEXT
                     if(field.flags & BINARY_FLAG) {
                         _column_types.push_back(value_type::BLOB);
-                        _my_types.push_back(MYSQL_TYPE_BLOB);
+                        _res_types.push_back(MYSQL_TYPE_BLOB);
                     } else {
                         _column_types.push_back(value_type::STRING);
-                        _my_types.push_back(MYSQL_TYPE_STRING);
+                        _res_types.push_back(MYSQL_TYPE_STRING);
                     }
                     break;
                 case MYSQL_TYPE_NULL:
                     _column_types.push_back(value_type::NULL_VALUE);
-                    _my_types.push_back(MYSQL_TYPE_NULL);
+                    _res_types.push_back(MYSQL_TYPE_NULL);
                     break;
                 case MYSQL_TYPE_TIMESTAMP:
                 case MYSQL_TYPE_DATE:
@@ -409,43 +430,43 @@ void mysql_statement::prepare_buffers()
                 default:
                     // Unsupported type
                     _column_types.push_back(value_type::UNSUPPORTED);
-                    _my_types.push_back(MYSQL_TYPE_NULL);
+                    _res_types.push_back(MYSQL_TYPE_NULL);
                     break;
             }
             //        _types.push_back(field.type);
-            _lengths.push_back(std::max(field.length, field.max_length));
-            _flags.push_back(field.flags);
-            _is_nulls.push_back(0);
+            _res_lengths.push_back(std::max(field.length, field.max_length));
+            _res_flags.push_back(field.flags);
+            _res_is_nulls.push_back(0);
         }
         mysql_free_result(metadata);
 
         // Prepare buffers for results
-        _binds.resize(column_count, bind0);
+        _res_binds.resize(column_count, bind0);
         for(size_t i=0; i<column_count; ++i) {
-            MYSQL_BIND &bind = _binds[i];
-            bind.buffer_type = _my_types[i];
-            bind.is_null = &_is_nulls[i];
-            bind.length = &_lengths[i];
-            switch (_my_types[i]) {
+            MYSQL_BIND &bind = _res_binds[i];
+            bind.buffer_type = _res_types[i];
+            bind.is_null = &_res_is_nulls[i];
+            bind.length = &_res_lengths[i];
+            switch (_res_types[i]) {
                 case MYSQL_TYPE_TINY:
-                    _buffers.emplace_back(sizeof(char));
+                    _res_buffers.emplace_back(sizeof(char));
                     break;
                 case MYSQL_TYPE_SHORT:
-                    _buffers.emplace_back(sizeof(short));
+                    _res_buffers.emplace_back(sizeof(short));
                     break;
                 case MYSQL_TYPE_LONG:
                 case MYSQL_TYPE_INT24:
                 case MYSQL_TYPE_YEAR:
-                    _buffers.emplace_back(sizeof(int));
+                    _res_buffers.emplace_back(sizeof(int));
                     break;
                 case MYSQL_TYPE_LONGLONG:
-                    _buffers.emplace_back(sizeof(int64_t));
+                    _res_buffers.emplace_back(sizeof(int64_t));
                     break;
                 case MYSQL_TYPE_FLOAT:
-                    _buffers.emplace_back(sizeof(float));
+                    _res_buffers.emplace_back(sizeof(float));
                     break;
                 case MYSQL_TYPE_DOUBLE:
-                    _buffers.emplace_back(sizeof(double));
+                    _res_buffers.emplace_back(sizeof(double));
                     break;
                 case MYSQL_TYPE_STRING:
                 case MYSQL_TYPE_VAR_STRING:
@@ -454,11 +475,11 @@ void mysql_statement::prepare_buffers()
                 case MYSQL_TYPE_TINY_BLOB:
                 case MYSQL_TYPE_MEDIUM_BLOB:
                 case MYSQL_TYPE_LONG_BLOB:
-                    _buffers.emplace_back(_lengths[i]);
+                    _res_buffers.emplace_back(_res_lengths[i]);
                     break;
                 case MYSQL_TYPE_NULL:
                     // No buffer needed
-                    _buffers.emplace_back(0);
+                    _res_buffers.emplace_back(0);
                     break;
                 case MYSQL_TYPE_TIMESTAMP:
                 case MYSQL_TYPE_DATE:
@@ -467,13 +488,13 @@ void mysql_statement::prepare_buffers()
                 case MYSQL_TYPE_NEWDATE:
                 default:
                     // Unsupported type
-                    _buffers.emplace_back(0);
+                    _res_buffers.emplace_back(0);
                     break;
             }
-            bind.buffer = _buffers[i].data();
-            bind.buffer_length = _buffers[i].size();
+            bind.buffer = _res_buffers[i].data();
+            bind.buffer_length = _res_buffers[i].size();
         }
-        if(mysql_stmt_bind_result(_stmt.get(), _binds.data())!=0) {
+        if(mysql_stmt_bind_result(_stmt.get(), _res_binds.data())!=0) {
             // TODO process error, throw exception
             int err = mysql_stmt_errno(_stmt.get());
             const char* errstr = mysql_stmt_error(_stmt.get());
@@ -496,9 +517,9 @@ std::vector<value> mysql_statement::fetch_next_row()
             return {};
         } else {
             std::vector<value> result;
-            result.reserve(_binds.size());
-            for(size_t i=0; i<_binds.size(); ++i) {
-                const MYSQL_BIND &bind = _binds[i];
+            result.reserve(_res_binds.size());
+            for(size_t i=0; i<_res_binds.size(); ++i) {
+                const MYSQL_BIND &bind = _res_binds[i];
                 if(bind.is_null!=nullptr && *bind.is_null != 0 || bind.is_null_value != 0) {
                     result.emplace_back(nullptr);
                 } else {
@@ -544,7 +565,7 @@ std::vector<value> mysql_statement::fetch_next_row()
                         case MYSQL_TYPE_MEDIUM_BLOB:
                         case MYSQL_TYPE_LONG_BLOB:
                             // Always retrieve a BLOB for binary and text data without flags, look at the predeclared type
-                            if(_my_types[i]==MYSQL_TYPE_BLOB) {
+                            if(_res_types[i]==MYSQL_TYPE_BLOB) {
                                 result.emplace_back(blob((const unsigned char *) bind.buffer,
                                                          (const unsigned char *) bind.buffer + (size_t) *bind.length));
                             } else {
@@ -598,73 +619,81 @@ value_type mysql_statement::column_type(unsigned int index) const
     return _column_types[index];
 }
 
+void mysql_statement::clear_bindings()
+{
+    std::for_each(_var_lengths.begin(), _var_lengths.end(), [](auto& v) { v = 0; });
+    std::for_each(_var_is_nulls.begin(), _var_is_nulls.end(), [](auto& v) { v = 1; });
+    std::for_each(_var_buffers.begin(), _var_buffers.end(), [](auto& v) { v.clear(); });
+    std::for_each(_var_types.begin(), _var_types.end(), [](auto& v) { v = MYSQL_TYPE_NULL; });
+}
+
 void mysql_statement::bind(unsigned int index, std::nullptr_t)
 {
-    set<unsigned long>(_lengths, index, 0, 0);
-    set<my_bool>(_is_nulls, index, 1, 0);
-    set<enum_field_types>(_my_types, index, MYSQL_TYPE_NULL, MYSQL_TYPE_NULL);
-    set(_buffers, index, blob(), blob());
+    set<unsigned long>(_var_lengths, index, 0, 0);
+    set<my_bool>(_var_is_nulls, index, 1, 0);
+    set<enum_field_types>(_var_types, index, MYSQL_TYPE_NULL, MYSQL_TYPE_NULL);
+    set(_var_buffers, index, blob(), blob());
 }
 
 void mysql_statement::bind(unsigned int index, const std::string& value)
 {
-    set<unsigned long>(_lengths, index, value.length(), 0);
-    set<my_bool>(_is_nulls, index, 0, 0);
-    set<enum_field_types>(_my_types, index, MYSQL_TYPE_STRING, MYSQL_TYPE_NULL);
-    set(_buffers, index, string_to_blob(value), blob());
+    set<unsigned long>(_var_lengths, index, value.length(), 0);
+    set<my_bool>(_var_is_nulls, index, 0, 0);
+    set<enum_field_types>(_var_types, index, MYSQL_TYPE_STRING, MYSQL_TYPE_NULL);
+    set(_var_buffers, index, string_to_blob(value), blob());
 }
 
 void mysql_statement::bind(unsigned int index, const std::string_view& value)
 {
-    set<unsigned long>(_lengths, index, value.length(), 0);
-    set<my_bool>(_is_nulls, index, 0, 0);
-    set<enum_field_types>(_my_types, index, MYSQL_TYPE_STRING, MYSQL_TYPE_NULL);
-    set(_buffers, index, string_to_blob(value), blob());
+    set<unsigned long>(_var_lengths, index, value.length(), 0);
+    set<my_bool>(_var_is_nulls, index, 0, 0);
+    set<enum_field_types>(_var_types, index, MYSQL_TYPE_STRING, MYSQL_TYPE_NULL);
+    set(_var_buffers, index, string_to_blob(value), blob());
 }
 
 void mysql_statement::bind(unsigned int index, const blob& value)
 {
     blob val;
-    set<unsigned long>(_lengths, index, value.size(), 0);
-    set<my_bool>(_is_nulls, index, 0, 0);
-    set<enum_field_types>(_my_types, index, MYSQL_TYPE_BLOB, MYSQL_TYPE_NULL);
-    set(_buffers, index, value, blob());
+    set<unsigned long>(_var_lengths, index, value.size(), 0);
+    set<my_bool>(_var_is_nulls, index, 0, 0);
+    set<enum_field_types>(_var_types, index, MYSQL_TYPE_BLOB, MYSQL_TYPE_NULL);
+    set(_var_buffers, index, value, blob());
 }
 
 void mysql_statement::bind(unsigned int index, bool value)
 {
     blob val;
-    set<unsigned long>(_lengths, index, 1, 0);
-    set<my_bool>(_is_nulls, index, 0, 0);
-    set<enum_field_types>(_my_types, index, MYSQL_TYPE_TINY, MYSQL_TYPE_NULL);
-    set(_buffers, index, num_to_blob((unsigned char)(value ? 1 : 0)), blob());
+    set<unsigned long>(_var_lengths, index, 1, 0);
+    set<my_bool>(_var_is_nulls, index, 0, 0);
+    set<enum_field_types>(_var_types, index, MYSQL_TYPE_TINY, MYSQL_TYPE_NULL);
+    set(_var_buffers, index, num_to_blob((unsigned char)(value ? 1 : 0)), blob());
 }
 
 void mysql_statement::bind(unsigned int index, int value)
 {
     blob val;
-    set<unsigned long>(_lengths, index, sizeof(int), 0);
-    set<my_bool>(_is_nulls, index, 0, 0);
-    set<enum_field_types>(_my_types, index, MYSQL_TYPE_LONG, MYSQL_TYPE_NULL);
-    set(_buffers, index, num_to_blob(value), blob());
+    set<unsigned long>(_var_lengths, index, sizeof(int), 0);
+    set<my_bool>(_var_is_nulls, index, 0, 0);
+    set<enum_field_types>(_var_types, index, MYSQL_TYPE_LONG, MYSQL_TYPE_NULL);
+    set(_var_buffers, index, num_to_blob(value), blob());
 }
 
 void mysql_statement::bind(unsigned int index, int64_t value)
 {
     blob val;
-    set<unsigned long>(_lengths, index, sizeof(int64_t), 0);
-    set<my_bool>(_is_nulls, index, 0, 0);
-    set<enum_field_types>(_my_types, index, MYSQL_TYPE_LONGLONG, MYSQL_TYPE_NULL);
-    set(_buffers, index, num_to_blob(value), blob());
+    set<unsigned long>(_var_lengths, index, sizeof(int64_t), 0);
+    set<my_bool>(_var_is_nulls, index, 0, 0);
+    set<enum_field_types>(_var_types, index, MYSQL_TYPE_LONGLONG, MYSQL_TYPE_NULL);
+    set(_var_buffers, index, num_to_blob(value), blob());
 }
 
 void mysql_statement::bind(unsigned int index, double value)
 {
     blob val;
-    set<unsigned long>(_lengths, index, sizeof(double), 0);
-    set<my_bool>(_is_nulls, index, 0, 0);
-    set<enum_field_types>(_my_types, index, MYSQL_TYPE_DOUBLE, MYSQL_TYPE_NULL);
-    set(_buffers, index, num_to_blob(value), blob());
+    set<unsigned long>(_var_lengths, index, sizeof(double), 0);
+    set<my_bool>(_var_is_nulls, index, 0, 0);
+    set<enum_field_types>(_var_types, index, MYSQL_TYPE_DOUBLE, MYSQL_TYPE_NULL);
+    set(_var_buffers, index, num_to_blob(value), blob());
 }
 
 void mysql_statement::bind(unsigned int index, const value& value)
@@ -682,16 +711,16 @@ bool mysql_statement::execute()
     }
 
     // Bind parameters, if any
-    if(!_my_types.empty()) {
+    if(!_var_types.empty()) {
         std::vector<MYSQL_BIND> binds;
-        binds.resize(_my_types.size(), bind0);
+        binds.resize(_var_types.size(), bind0);
 
-        for(size_t idx = 0; idx<_my_types.size(); idx++) {
-            binds[idx].buffer_type = _my_types[idx];
-            binds[idx].buffer_length = _lengths[idx];
-            binds[idx].buffer = _buffers[idx].data();
-            binds[idx].length = &_lengths[idx];
-            binds[idx].is_null = (my_bool * ) & _is_nulls[idx];
+        for(size_t idx = 0; idx<_var_types.size(); idx++) {
+            binds[idx].buffer_type = _var_types[idx];
+            binds[idx].buffer_length = _var_lengths[idx];
+            binds[idx].buffer = _var_buffers[idx].data();
+            binds[idx].length = &_var_lengths[idx];
+            binds[idx].is_null = (my_bool * ) & _var_is_nulls[idx];
         }
 
         if (mysql_stmt_bind_param(_stmt.get(), binds.data()) != 0) { // skip index 0
@@ -854,15 +883,9 @@ class statement : public sqlcpp::statement
 {
 private:
     std::shared_ptr<mysql_statement> _stmt;
-//    std::shared_ptr<MYSQL_STMT> _stmt;
 
     std::vector<value> _params;
     std::vector<details::var_bind> _var_bindings;
-
-    std::vector<unsigned long> _lengths;
-    std::vector<my_bool> _nulls;
-    std::vector<blob> _buffers;
-    std::vector<enum_field_types> _types;
 
     int parameter_binding_position(const std::string& name) const;
     int parameter_binding_position(unsigned int index) const;
@@ -885,6 +908,8 @@ public:
     unsigned int parameter_count() const override;
     int parameter_index(const std::string& name) const override;
     std::string parameter_name(unsigned int index) const override;
+
+    void clear_bindings() override;
 
     statement& bind(const std::string& name, std::nullptr_t) override;
     statement& bind(const std::string& name, const std::string& value) override;
@@ -940,6 +965,11 @@ int statement::parameter_binding_position(const std::string& name) const
 int statement::parameter_binding_position(unsigned int index) const
 {
     return _var_bindings.size()>index ? _var_bindings[index].position : -1;
+}
+
+void statement::clear_bindings()
+{
+    _stmt->clear_bindings();
 }
 
 statement& statement::bind(const std::string& name, std::nullptr_t)

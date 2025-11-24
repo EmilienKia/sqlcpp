@@ -199,6 +199,31 @@ stmt->execute([&](const sqlcpp::row& row) {
 });
 ```
 
+#### Execute a statement multiple times
+It could be useful to execute a statement multiple times, just changing the bound values.
+
+To achieve this, once executed the first time, you just have to bind a new value to the variables and execute the statement again.
+
+```cpp
+auto select_stmt = db->prepare("INSERT INTO users(first_name, last_name) VALUES(?, ?)");
+
+// First binding and execution
+select_stmt->bind("first_name, "John");
+select_stmt->bind("last_name, "Doe");
+select_stmt->execute();
+
+// Second binding and execution
+select_stmt->bind("first_name, "John");
+select_stmt->bind("last_name, "Doe");
+select_stmt->execute();
+```
+
+Note: the statement is not re-prepared. The driver will reuse the prepared statement.
+The already bound values are reused.
+
+Note: starting to reuse a statement by bounding a new value will invalidate all the results of the previous execution.
+And especially cursor result usages will throw exceptions.
+
 ### Availability of the drivers
 The SqlCpp library provides drivers for various database systems, including SQLite, PostgreSQL, MySQL, and more.
 

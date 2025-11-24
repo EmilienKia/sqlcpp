@@ -4,7 +4,6 @@ Roadmap and Todos
 This file contains a raw bunch of ideas and bugs or misses to address, develop or to fix.
 
 - Fix CMake modules export (module names and dependencies)
-- Add reuse of prepared statements, to execute with different values binding
 - Add transaction commit/rollback
 - Add DSL builder for queries, with specific dialect adapters for each database
 - Add common SQL string parsing to DSL

@@ -379,6 +379,25 @@ TEST_CASE("MariaDB Variable Binding", "[mariadb][binding]")
         REQUIRE( std::holds_alternative<std::nullptr_t>(row.get_value(3)) );
     }
 
+    SECTION("Clear binding values")
+    {
+        auto stmt = db->prepare("INSERT INTO binding_test(int_val, real_val, text_val) VALUES(?, ?, ?)");
+        REQUIRE( !!stmt );
+
+        stmt->bind(0, 1).bind(1, 3.14).bind(2, "test");
+        stmt->clear_bindings();
+
+        auto result = stmt->execute();
+        REQUIRE( !!result );
+
+        // Verify values
+        auto select_stmt = db->prepare("SELECT COUNT(int_val) FROM binding_test WHERE int_val IS NOT NULL");
+        auto rset = select_stmt->execute();
+        REQUIRE( !!rset );
+        auto it = rset->begin();
+        auto& row = *it;
+        REQUIRE( row.get_value_int(0) == 0 );
+    }
 
     SECTION("Multiple executions with different bindings")
     {
@@ -386,25 +405,28 @@ TEST_CASE("MariaDB Variable Binding", "[mariadb][binding]")
         REQUIRE( !!stmt );
 
         // First execution
-        stmt->bind(0, static_cast<int64_t>(1));
+        stmt->bind(0, 1);
         stmt->bind(1, std::string("first"));
         stmt->execute();
 
         // Second execution with different values
-        stmt->bind(0, static_cast<int64_t>(2));
+        stmt->bind(0, 2);
         stmt->bind(1, std::string("second"));
         stmt->execute();
 
+        // Second execution with different values
+        stmt->bind(0, 3);
+        stmt->bind(1, std::string("third"));
+        stmt->execute();
+
         // Verify both rows
-        auto select_stmt = db->prepare("SELECT COUNT(*) FROM binding_test WHERE int_val IN (:1, $2)");
-        select_stmt->bind(1, static_cast<int64_t>(1));
-        select_stmt->bind(2, static_cast<int64_t>(2));
+        auto select_stmt = db->prepare("SELECT COUNT(DISTINCT text_val) FROM binding_test");
         auto rset = select_stmt->execute();
         REQUIRE( !!rset );
 
         auto it = rset->begin();
         auto& row = *it;
-        REQUIRE( row.get_value_int64(0) == 2 );
+        REQUIRE( row.get_value_int(0) == 3 );
     }
 
     SECTION("Bind different integer types")

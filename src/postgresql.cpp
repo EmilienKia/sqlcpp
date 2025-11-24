@@ -575,6 +575,8 @@ public:
     int parameter_index(const std::string& name) const override;
     std::string parameter_name(unsigned int index) const override;
 
+    void clear_bindings() override;
+
     statement& bind(const std::string& name, std::nullptr_t) override;
     statement& bind(const std::string& name, const std::string& value) override;
     statement& bind(const std::string& name, const std::string_view& value) override;
@@ -759,6 +761,11 @@ static inline std::vector<value>& ensure(std::vector<value>& params, unsigned in
         params.resize(index + 1);
     }
     return params;
+}
+
+void statement::clear_bindings()
+{
+    std::for_each(_params.begin(), _params.end(), [](auto& v) { v = nullptr; });
 }
 
 statement& statement::bind(const std::string& name, std::nullptr_t) 
